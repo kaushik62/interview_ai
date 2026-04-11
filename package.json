@@ -1,0 +1,14 @@
+{
+  "name": "interview-coach",
+  "version": "1.0.0",
+  "description": "AI Mock Interview Coach — Full Stack App",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "dev": "npm run dev:server & npm run dev:client",
+    "build": "npm run build --prefix client",
+    "start": "npm start --prefix server"
+  }
+}
