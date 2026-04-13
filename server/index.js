@@ -6,7 +6,6 @@ import { initDB, testConnection, ensureDatabase } from './db.js';
 import authRoutes from './routes/auth.js';
 import mcqRoutes from './routes/mcq.js';
 import statsRoutes from './routes/stats.js';
-import resumeRoutes from './routes/resume.js';
 import pointsRoutes from './routes/points.js';
 
 
@@ -30,7 +29,6 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/mcq', mcqRoutes);
 app.use('/api/stats', statsRoutes);
-app.use('/api/resume', resumeRoutes);
 app.use('/api/points', pointsRoutes);
 
 // Health check endpoint
