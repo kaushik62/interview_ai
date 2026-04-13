@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { Calendar, Award, ArrowLeft, AlertCircle } from 'lucide-react';
+import { Calendar, Award, ArrowLeft, Loader } from 'lucide-react';
 
 const DailyChallenge = () => {
   const navigate = useNavigate();
@@ -19,13 +19,13 @@ const DailyChallenge = () => {
   }, []);
 
   const fetchChallenge = async () => {
+    setLoading(true);
     try {
       const res = await api.get('/points/daily-challenge');
       setChallenge(res.data);
-      setError(null);
     } catch (error) {
       console.error('Error fetching challenge:', error);
-      setError(error.response?.data?.error || 'Failed to load daily challenge');
+      setError('Failed to load challenge');
     } finally {
       setLoading(false);
     }
@@ -42,7 +42,7 @@ const DailyChallenge = () => {
         setResult(res.data);
       } catch (error) {
         console.error('Error submitting:', error);
-        setError(error.response?.data?.error || 'Failed to submit challenge');
+        setError('Failed to submit answers');
       } finally {
         setSubmitting(false);
       }
@@ -54,7 +54,7 @@ const DailyChallenge = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-ink-950 flex items-center justify-center">
-        <div className="w-12 h-12 rounded-full border-2 border-electric-500/20 border-t-electric-500 animate-spin" />
+        <Loader className="w-8 h-8 text-purple-400 animate-spin" />
       </div>
     );
   }
@@ -63,9 +63,7 @@ const DailyChallenge = () => {
     return (
       <div className="min-h-screen bg-ink-950 py-8 px-4">
         <div className="max-w-2xl mx-auto text-center">
-          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-white mb-2">Unable to Load Challenge</h1>
-          <p className="text-slate-400 mb-6">{error}</p>
+          <p className="text-red-400 mb-4">{error}</p>
           <button
             onClick={() => navigate('/dashboard')}
             className="px-6 py-3 bg-electric-500 text-white rounded-lg"
@@ -96,31 +94,7 @@ const DailyChallenge = () => {
               {result.correctCount} / {result.totalQuestions} Correct
             </p>
             <p className="text-green-400 mb-2">+{result.pointsEarned} points earned! 🎉</p>
-            {result.streakBonus > 0 && (
-              <p className="text-orange-400 text-sm">+{result.streakBonus} streak bonus! 🔥</p>
-            )}
             <p className="text-purple-400 mt-4">{result.message}</p>
-          </div>
-
-          <h3 className="text-white font-bold text-lg mb-4">Detailed Review</h3>
-          <div className="space-y-4">
-            {result.results?.map((r, idx) => (
-              <div key={idx} className="bg-ink-900 rounded-xl border border-ink-800 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    r.isCorrect ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                  }`}>
-                    {r.isCorrect ? '✓ Correct' : '✗ Incorrect'}
-                  </span>
-                </div>
-                <p className="text-white text-sm mb-2">{r.question}</p>
-                <p className="text-slate-400 text-xs">Your answer: {r.userAnswer}</p>
-                {!r.isCorrect && (
-                  <p className="text-green-400 text-xs mt-1">Correct: {r.correctAnswer}</p>
-                )}
-                <p className="text-slate-500 text-xs mt-2">{r.explanation}</p>
-              </div>
-            ))}
           </div>
 
           <button
@@ -186,7 +160,7 @@ const DailyChallenge = () => {
                 key={idx}
                 onClick={() => submitAnswer(idx)}
                 disabled={submitting}
-                className="w-full text-left p-4 bg-ink-800 hover:bg-ink-700 rounded-lg border border-ink-700 hover:border-purple-500 transition-all"
+                className="w-full text-left p-4 bg-ink-800 hover:bg-ink-700 rounded-lg border border-ink-700 hover:border-purple-500 transition-all disabled:opacity-50"
               >
                 <span className="font-mono text-purple-400 font-bold mr-3">
                   {String.fromCharCode(65 + idx)}.
@@ -200,7 +174,7 @@ const DailyChallenge = () => {
         {submitting && (
           <div className="text-center text-slate-400">
             <div className="inline-flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full border-2 border-electric-500/20 border-t-electric-500 animate-spin" />
+              <Loader className="w-4 h-4 animate-spin" />
               Submitting...
             </div>
           </div>
