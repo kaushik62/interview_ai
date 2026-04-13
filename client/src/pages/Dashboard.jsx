@@ -8,6 +8,9 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { StatSkeleton, CardSkeleton } from '../components/Skeleton';
+import StreakCard from '../components/StreakCard';
+import DailyChallengeCard from '../components/DailyChallengeCard';
+import Leaderboard from '../components/Leaderboard';
 
 const scoreColor = (s) =>
   s >= 70 ? 'text-electric-400' : s >= 50 ? 'text-amber-400' : 'text-red-400';
@@ -17,6 +20,28 @@ const fmtDate = (d) => {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+// Error boundary wrapper for gamification components
+const GamificationWrapper = ({ children, title }) => {
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError) {
+    return (
+      <div className="glass-card p-6 text-center">
+        <p className="text-slate-400 text-sm">{title} temporarily unavailable</p>
+        <p className="text-slate-500 text-xs mt-1">Check back soon!</p>
+      </div>
+    );
+  }
+
+  try {
+    return children;
+  } catch (error) {
+    console.error(`${title} error:`, error);
+    setHasError(true);
+    return null;
+  }
+};
+
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -24,6 +49,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [pointsEnabled, setPointsEnabled] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,6 +75,15 @@ export default function Dashboard() {
         best_score: bestScore,
         total_questions_answered: totalQuestions
       });
+      
+      // Test if points system is available
+      try {
+        await api.get('/points/my-stats');
+        setPointsEnabled(true);
+      } catch (pointsErr) {
+        console.log('Points system not available yet');
+        setPointsEnabled(false);
+      }
       
     } catch (err) {
       console.error('Dashboard load error:', err);
@@ -216,7 +251,7 @@ export default function Dashboard() {
       {/* ── Main grid ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* Recent Quizzes */}
+        {/* Recent Quizzes - Left Column (spans 2 columns) */}
         <div className="lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display font-semibold text-white text-lg">Recent Quizzes</h2>
@@ -292,8 +327,38 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Right column */}
+        {/* Right Column - Gamification Components */}
         <div className="space-y-4">
+          
+          {/* Streak Card with error handling */}
+          {pointsEnabled ? (
+            <StreakCard />
+          ) : (
+            <div className="glass-card p-6 text-center">
+              <p className="text-slate-400 text-sm">Points System Coming Soon!</p>
+              <p className="text-slate-500 text-xs mt-1">Complete quizzes to earn points</p>
+            </div>
+          )}
+          
+          {/* Daily Challenge Card with error handling */}
+          {pointsEnabled ? (
+            <DailyChallengeCard />
+          ) : (
+            <div className="glass-card p-6 text-center bg-gradient-to-r from-purple-500/10 to-pink-500/10">
+              <p className="text-purple-400 text-sm">Daily Challenge</p>
+              <p className="text-slate-400 text-xs mt-1">Coming soon!</p>
+            </div>
+          )}
+          
+          {/* Leaderboard with error handling */}
+          {pointsEnabled ? (
+            <Leaderboard />
+          ) : (
+            <div className="glass-card p-6 text-center">
+              <p className="text-yellow-400 text-sm">Leaderboard</p>
+              <p className="text-slate-400 text-xs mt-1">Be the first to earn points!</p>
+            </div>
+          )}
 
           {/* Quick Start Topics */}
           <div className="glass-card p-5">

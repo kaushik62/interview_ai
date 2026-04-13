@@ -12,7 +12,7 @@ const dbConfig = {
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  timezone: '+00:00',
+  timezone: '+05:30',
 };
 
 const pool = mysql.createPool(dbConfig);
@@ -168,6 +168,76 @@ export const initDB = async () => {
         INDEX idx_question_number (question_number)
       )
     `);
+
+    // Add this inside your initDB function in db.js
+
+    // User points table
+    await conn.query(`
+  CREATE TABLE IF NOT EXISTS user_points (
+    user_id VARCHAR(36) PRIMARY KEY,
+    total_points INT DEFAULT 0,
+    current_streak INT DEFAULT 0,
+    longest_streak INT DEFAULT 0,
+    last_activity_date DATE,
+    total_daily_challenges_completed INT DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )
+`);
+
+    // Points history table
+    await conn.query(`
+  CREATE TABLE IF NOT EXISTS points_history (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL,
+    points INT NOT NULL,
+    reason VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id)
+  )
+`);
+
+    // Daily challenges table
+    await conn.query(`
+  CREATE TABLE IF NOT EXISTS daily_challenges (
+    id VARCHAR(36) PRIMARY KEY,
+    challenge_date DATE NOT NULL,
+    questions JSON NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_date (challenge_date)
+  )
+`);
+
+    // User challenge completions table
+    await conn.query(`
+  CREATE TABLE IF NOT EXISTS user_challenge_completions (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL,
+    challenge_date DATE NOT NULL,
+    score INT DEFAULT 0,
+    completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_user_challenge (user_id, challenge_date)
+  )
+`);
+
+    // Leaderboard cache table - FIXED (rank is reserved keyword)
+    await conn.query(`
+  CREATE TABLE IF NOT EXISTS leaderboard_cache (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL,
+    user_name VARCHAR(100),
+    total_points INT DEFAULT 0,
+    current_streak INT DEFAULT 0,
+    longest_streak INT DEFAULT 0,
+    \`rank\` INT DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_rank (\`rank\`),
+    INDEX idx_points (total_points)
+  )
+`);
 
     console.log('✅ Database tables initialized successfully');
     console.log('   - users');

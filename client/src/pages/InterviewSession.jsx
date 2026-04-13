@@ -83,6 +83,9 @@ const InterviewSession = () => {
         // Using api utility - no hardcoded URL
         const response = await api.post(`/mcq/submit/${id}`, { answers: newAnswers });
         
+        // Add points for quiz completion
+        await addQuizPoints(response.data.score, response.data.totalQuestions);
+        
         navigate(`/interview/${id}/result`, { state: { results: response.data } });
       } catch (error) {
         console.error('Error submitting answers:', error);
@@ -100,6 +103,51 @@ const InterviewSession = () => {
     } else {
       setCurrentIndex(currentIndex + 1);
     }
+  };
+
+  // Function to add points for quiz completion
+  const addQuizPoints = async (score, totalQuestions) => {
+    try {
+      const response = await api.post('/points/add-quiz-points', {
+        score: score,
+        totalQuestions: totalQuestions
+      });
+      
+      console.log('Points added:', response.data);
+      
+      // Show points notification
+      if (response.data.pointsAdded > 0) {
+        showPointsNotification(response.data);
+      }
+    } catch (error) {
+      console.error('Error adding points:', error);
+      // Don't block the user experience if points API fails
+    }
+  };
+
+  // Show points notification (you can customize this)
+  const showPointsNotification = (pointsData) => {
+    // Create a temporary notification div
+    const notification = document.createElement('div');
+    notification.className = 'fixed top-20 right-4 z-50 glass-card p-4 animate-slide-in';
+    notification.innerHTML = `
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center">
+          <span class="text-xl">🎉</span>
+        </div>
+        <div>
+          <p class="text-white font-bold">+${pointsData.pointsAdded} Points!</p>
+          <p class="text-xs text-slate-400">${pointsData.streakMessage || 'Quiz completed!'}</p>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+      notification.remove();
+    }, 3000);
   };
 
   // Show error state
@@ -219,6 +267,13 @@ const InterviewSession = () => {
             </div>
           </div>
         )}
+
+        {/* Points Info Bar */}
+        <div className="mt-6 p-3 bg-ink-800/50 rounded-lg text-center">
+          <p className="text-xs text-slate-500">
+            Complete this quiz to earn points and increase your streak! 🔥
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -12,6 +12,8 @@ router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
+    console.log('Registration attempt for:', email);
+
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Name, email and password are required' });
     }
@@ -31,8 +33,17 @@ router.post('/register', async (req, res) => {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
-    // Hash password
-    const passwordHash = await bcrypt.hash(password, 10);
+    // Hash password with try-catch
+    let passwordHash;
+    try {
+      const salt = await bcrypt.genSalt(10);
+      passwordHash = await bcrypt.hash(password, salt);
+      console.log('Password hashed successfully');
+    } catch (hashError) {
+      console.error('Hashing error:', hashError);
+      return res.status(500).json({ error: 'Error processing password' });
+    }
+
     const userId = uuidv4();
 
     // Insert user
@@ -58,6 +69,8 @@ router.post('/register', async (req, res) => {
       [userId]
     );
 
+    console.log('Registration successful for:', email);
+
     res.status(201).json({ 
       token, 
       user,
@@ -70,7 +83,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// POST /api/auth/login - FIXED VERSION
+// POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -82,7 +95,13 @@ router.post('/login', async (req, res) => {
     }
 
     // Get user with password
-    const user = await getOne('SELECT * FROM users WHERE email = ?', [email.toLowerCase()]);
+    let user;
+    try {
+      user = await getOne('SELECT * FROM users WHERE email = ?', [email.toLowerCase()]);
+    } catch (dbError) {
+      console.error('Database error:', dbError);
+      return res.status(500).json({ error: 'Database error' });
+    }
     
     if (!user) {
       console.log('User not found:', email);
@@ -90,9 +109,17 @@ router.post('/login', async (req, res) => {
     }
 
     console.log('User found, verifying password...');
+    console.log('Stored hash:', user.password);
 
-    // Check password
-    const valid = await bcrypt.compare(password, user.password);
+    // Check password with try-catch
+    let valid = false;
+    try {
+      valid = await bcrypt.compare(password, user.password);
+      console.log('Password comparison result:', valid);
+    } catch (compareError) {
+      console.error('bcrypt compare error:', compareError);
+      return res.status(500).json({ error: 'Error verifying password' });
+    }
     
     if (!valid) {
       console.log('Invalid password for user:', email);
@@ -102,9 +129,15 @@ router.post('/login', async (req, res) => {
     console.log('Password valid, generating token...');
 
     // Generate token
-    const token = generateToken(user.id);
+    let token;
+    try {
+      token = generateToken(user.id);
+    } catch (tokenError) {
+      console.error('Token generation error:', tokenError);
+      return res.status(500).json({ error: 'Error generating token' });
+    }
 
-    // Update last login time
+    // Update last login time (optional, ignore if fails)
     try {
       await query('UPDATE users SET updated_at = NOW() WHERE id = ?', [user.id]);
     } catch (updateErr) {
@@ -229,7 +262,8 @@ router.put('/change-password', authenticate, async (req, res) => {
       return res.status(401).json({ error: 'Current password is incorrect' });
     }
     
-    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+    const salt = await bcrypt.genSalt(10);
+    const newPasswordHash = await bcrypt.hash(newPassword, salt);
     
     await query('UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?', [newPasswordHash, req.user.id]);
     

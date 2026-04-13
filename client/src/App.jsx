@@ -10,6 +10,7 @@ import SessionResult from './pages/SessionResult';
 import History from './pages/History';
 import Layout from './components/Layout';
 import ResumeUpload from './components/ResumeUpload';
+import DailyChallenge from './pages/DailyChallenge';
 
 const Protected = ({ children }) => {
   const { user, loading } = useAuth();
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/interview/:id" element={<InterviewSession />} />
         <Route path="/interview/:id/result" element={<SessionResult />} />
         <Route path="/history" element={<History />} />
+        <Route path="/daily-challenge" element={<Protected><DailyChallenge /></Protected>} />
         <Route path="/resume-upload" element={<Protected><ResumeUpload /></Protected>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

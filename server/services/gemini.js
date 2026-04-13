@@ -6,7 +6,7 @@ dotenv.config();
 
 // Check if API key exists
 if (!process.env.GEMINI_API_KEY) {
-  console.error('❌ GEMINI_API_KEY is not set in .env file');
+  console.error('GEMINI_API_KEY is not set in .env file');
   console.error('Please add: GEMINI_API_KEY=your_api_key_here');
 }
 
@@ -15,7 +15,7 @@ if (!process.env.GEMINI_API_KEY) {
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Generate MCQ questions using Gemini
-export async function generateMCQQuestions(jobRole, topic = "programming", count = 5) {
+export async function generateMCQQuestions(jobRole, topic, count) {
   try {
     // Use gemini-flash-latest which is working
     const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
@@ -57,7 +57,7 @@ Generate ${count} unique questions now.`;
     // Find JSON array in the response
     const jsonMatch = cleanText.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      console.error('❌ No JSON array found in response');
+      console.error('No JSON array found in response');
       console.log('Raw response:', text.substring(0, 500));
       throw new Error('Gemini returned invalid response format - no JSON array found');
     }
@@ -87,7 +87,7 @@ Generate ${count} unique questions now.`;
     return validQuestions.slice(0, count);
     
   } catch (error) {
-    console.error('❌ Gemini API error:', error.message);
+    console.error('Gemini API error:', error.message);
     throw new Error(`Gemini API failed: ${error.message}`);
   }
 }
