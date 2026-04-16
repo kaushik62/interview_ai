@@ -1,106 +1,319 @@
-// client/src/components/DailyChallengeCard.jsx
+// components/DailyChallengeCard.jsx - FIXED VERSION
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { Calendar, Award, CheckCircle, ArrowRight, Loader } from 'lucide-react';
+import { Calendar, Zap, Trophy, CheckCircle, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import toast from 'react-hot-toast';
 
-const DailyChallengeCard = () => {
-  const navigate = useNavigate();
+export default function DailyChallengeCard({ onPointsUpdate }) {
   const [challenge, setChallenge] = useState(null);
-  const [hasCompleted, setHasCompleted] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [answers, setAnswers] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+  const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  const [retryCount, setRetryCount] = useState(0);
 
-  useEffect(() => {
-    fetchDailyChallenge();
-  }, [retryCount]);
-
-  const fetchDailyChallenge = async () => {
-    setLoading(true);
-    setError(null);
-    
+  const loadChallenge = async () => {
     try {
-      const res = await api.get('/points/daily-challenge');
-      setChallenge(res.data);
-      setHasCompleted(res.data.hasCompleted || false);
-    } catch (error) {
-      console.error('Error fetching challenge:', error);
-      setError(error.response?.data?.error || 'Failed to load challenge');
+      setLoading(true);
+      setError(null);
+      console.log('Loading daily challenge...');
+      const response = await api.get('/points/daily-challenge');
+      console.log('Daily challenge response:', response.data);
+      setChallenge(response.data);
       
-      // Auto retry after 2 seconds if failed
-      if (retryCount < 2) {
-        setTimeout(() => {
-          setRetryCount(prev => prev + 1);
-        }, 2000);
+      // Reset states for new challenge
+      if (!response.data.hasCompleted) {
+        setAnswers({});
+        setSubmitted(false);
+        setResult(null);
+      } else {
+        setSubmitted(true);
+      }
+    } catch (err) {
+      console.error('Failed to load daily challenge:', err);
+      setError(err.response?.data?.error || 'Failed to load challenge');
+      if (err.response?.status !== 503) {
+        toast.error('Failed to load daily challenge');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const startChallenge = () => {
-    navigate('/daily-challenge');
+  useEffect(() => {
+    loadChallenge();
+  }, []);
+
+  const handleAnswerSelect = (questionId, answerIndex) => {
+    if (submitted) return;
+    setAnswers(prev => ({
+      ...prev,
+      [questionId]: answerIndex
+    }));
+  };
+
+  const handleSubmit = async () => {
+    const totalQuestions = challenge?.questions?.length || 0;
+    const answeredCount = Object.keys(answers).length;
+    
+    if (answeredCount < totalQuestions) {
+      toast.error(`Please answer all ${totalQuestions} questions before submitting`);
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      
+      // Convert answers object to array format
+      const answersArray = Object.keys(answers)
+        .sort((a, b) => parseInt(a) - parseInt(b))
+        .map(questionId => answers[questionId]);
+      
+      console.log('Submitting answers:', answersArray);
+      
+      const response = await api.post('/points/daily-challenge/submit', {
+        answers: answersArray
+      });
+      
+      console.log('Submit response:', response.data);
+      setResult(response.data);
+      setSubmitted(true);
+      
+      // Show success message with points
+      toast.success(response.data.message || `You earned ${response.data.pointsEarned} points!`);
+      
+      // IMPORTANT: Notify parent component to refresh points
+      if (onPointsUpdate) {
+        await onPointsUpdate();
+      }
+      
+      // Also refresh streak card by dispatching a custom event
+      window.dispatchEvent(new CustomEvent('pointsUpdated'));
+      
+      // Reload challenge to update completion status
+      setTimeout(() => {
+        loadChallenge();
+      }, 2000);
+      
+    } catch (err) {
+      console.error('Failed to submit challenge:', err);
+      const errorMsg = err.response?.data?.error || 'Failed to submit challenge';
+      toast.error(errorMsg);
+      
+      if (err.response?.data?.alreadyCompleted) {
+        setSubmitted(true);
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) {
     return (
-      <div className="glass-card p-6 text-center">
-        <div className="flex items-center justify-center gap-2">
-          <Loader className="w-5 h-5 text-purple-400 animate-spin" />
-          <p className="text-slate-400 text-sm">Loading challenge...</p>
+      <div className="glass-card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="h-6 w-32 bg-white/[0.06] rounded animate-pulse" />
+          <div className="h-4 w-20 bg-white/[0.04] rounded animate-pulse" />
+        </div>
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-16 bg-white/[0.04] rounded-lg animate-pulse" />
+          ))}
         </div>
       </div>
     );
   }
 
-  if (error && retryCount >= 2) {
+  if (error) {
     return (
-      <div className="glass-card p-6 text-center">
-        <p className="text-red-400 text-sm">Unable to load challenge</p>
+      <div className="glass-card p-5 text-center">
+        <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+        <p className="text-slate-400 text-sm font-medium">Daily Challenge</p>
+        <p className="text-slate-500 text-xs mt-1">{error}</p>
         <button 
-          onClick={() => setRetryCount(0)}
-          className="mt-2 text-xs text-purple-400 hover:text-purple-300"
+          onClick={loadChallenge}
+          className="mt-3 text-xs text-electric-400 hover:text-electric-300 flex items-center gap-1 mx-auto"
         >
-          Try Again
+          <RefreshCw className="w-3 h-3" /> Try Again →
         </button>
       </div>
     );
   }
 
-  if (hasCompleted) {
+  if (!challenge) {
     return (
-      <div className="glass-card p-6 text-center border-green-500/20">
-        <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-3" />
-        <h3 className="text-white font-bold mb-1">Daily Challenge Complete! ✅</h3>
+      <div className="glass-card p-5 text-center">
+        <Calendar className="w-8 h-8 text-slate-500 mx-auto mb-2" />
+        <p className="text-slate-400 text-sm">No challenge available</p>
+        <p className="text-slate-500 text-xs mt-1">Check back tomorrow!</p>
+      </div>
+    );
+  }
+
+  // Show results if submitted
+  if (submitted && result) {
+    const isPerfect = result.correctCount === result.totalQuestions;
+    const isGood = result.score >= 70;
+    
+    return (
+      <div className="glass-card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-display font-semibold text-white flex items-center gap-2">
+            <Trophy className={`w-4 h-4 ${isPerfect ? 'text-yellow-400' : isGood ? 'text-electric-400' : 'text-slate-400'}`} />
+            Challenge Complete!
+          </h3>
+          <span className="text-xs text-slate-500">{challenge.challengeId?.split('-')[1]}</span>
+        </div>
+
+        {/* Score Display */}
+        <div className="text-center mb-4">
+          <div className="text-4xl font-bold text-white mb-1">
+            {result.score}%
+          </div>
+          <p className="text-sm text-slate-400">
+            {result.correctCount} / {result.totalQuestions} Correct
+          </p>
+        </div>
+
+        {/* Points Earned */}
+        <div className={`rounded-lg p-3 mb-4 text-center ${
+          result.pointsEarned > 0 ? 'bg-gradient-to-r from-green-500/20 to-emerald-500/20' : 'bg-slate-500/10'
+        }`}>
+          <p className="text-2xl font-bold text-green-400">
+            +{result.pointsEarned} points earned! 🎉
+          </p>
+          {result.streakBonus > 0 && (
+            <p className="text-xs text-orange-400 mt-1">
+              +{result.streakBonus} streak bonus! 🔥
+            </p>
+          )}
+          <p className="text-sm text-white mt-2">
+            Total Points: {result.totalPoints}
+          </p>
+        </div>
+
+        {/* Question Results Summary */}
+        <div className="space-y-2 max-h-60 overflow-y-auto mb-4">
+          {result.results?.map((res, idx) => {
+            const question = challenge.questions[idx];
+            return (
+              <div key={idx} className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
+                <div className="flex items-start gap-2">
+                  {res.isCorrect ? (
+                    <CheckCircle className="w-3 h-3 text-green-400 mt-0.5 shrink-0" />
+                  ) : (
+                    <XCircle className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />
+                  )}
+                  <div className="flex-1">
+                    <p className="text-xs text-slate-300">{question.question.substring(0, 100)}...</p>
+                    {!res.isCorrect && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        Correct: {res.correctAnswerText}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={() => {
+            loadChallenge();
+            if (onPointsUpdate) onPointsUpdate();
+          }}
+          className="w-full py-2 rounded-lg bg-white/[0.06] border border-white/[0.08]
+                     text-slate-300 text-sm hover:bg-white/[0.1] transition-all"
+        >
+          Check Tomorrow's Challenge →
+        </button>
+      </div>
+    );
+  }
+
+  // Show active challenge
+  if (challenge.hasCompleted) {
+    return (
+      <div className="glass-card p-5 text-center">
+        <div className="w-12 h-12 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center mx-auto mb-3">
+          <CheckCircle className="w-6 h-6 text-green-400" />
+        </div>
+        <p className="text-white font-display font-semibold mb-1">Challenge Completed!</p>
         <p className="text-slate-400 text-sm">Come back tomorrow for a new challenge</p>
+        <button
+          onClick={loadChallenge}
+          className="mt-3 text-xs text-electric-400 hover:text-electric-300"
+        >
+          Refresh →
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="glass-card p-6 bg-gradient-to-r from-purple-500/10 to-pink-500/10">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-purple-400" />
-          <span className="text-purple-400 text-xs font-medium">Daily Challenge</span>
-        </div>
-        <Award className="w-5 h-5 text-yellow-400" />
+    <div className="glass-card p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-display font-semibold text-white flex items-center gap-2">
+          <Zap className="w-4 h-4 text-yellow-400" />
+          Daily Challenge
+        </h3>
+        <span className="text-xs text-slate-500">
+          {challenge.challengeId?.split('-')[1]}
+        </span>
       </div>
-      
-      <h3 className="text-white font-bold text-lg mb-2">Today's Challenge</h3>
-      <p className="text-slate-300 text-sm mb-3">
-        Complete {challenge?.totalQuestions || 5} questions to earn 25 points!
+
+      <p className="text-slate-400 text-sm mb-4">
+        Answer all questions to earn points and maintain your streak!
       </p>
-      
+
+      <div className="space-y-4 mb-4 max-h-96 overflow-y-auto">
+        {challenge.questions?.map((q, idx) => (
+          <div key={idx} className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.05]">
+            <p className="text-sm text-white mb-2">
+              {idx + 1}. {q.question}
+            </p>
+            <div className="space-y-1.5">
+              {q.options.map((option, optIdx) => (
+                <label
+                  key={optIdx}
+                  className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all
+                    ${answers[idx + 1] === optIdx 
+                      ? 'bg-electric-500/20 border border-electric-500/30' 
+                      : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.06]'
+                    }`}
+                >
+                  <input
+                    type="radio"
+                    name={`q${idx}`}
+                    value={optIdx}
+                    checked={answers[idx + 1] === optIdx}
+                    onChange={() => handleAnswerSelect(idx + 1, optIdx)}
+                    disabled={submitting}
+                    className="w-3 h-3 text-electric-500"
+                  />
+                  <span className="text-sm text-slate-300">{option}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
       <button
-        onClick={startChallenge}
-        className="w-full py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
+        onClick={handleSubmit}
+        disabled={submitting}
+        className="w-full py-2.5 rounded-lg bg-gradient-to-r from-electric-500 to-purple-500
+                   text-white font-medium text-sm hover:opacity-90 transition-all
+                   disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        Start Challenge <ArrowRight className="w-4 h-4" />
+        {submitting ? 'Submitting...' : 'Submit Challenge'}
       </button>
+      
+      <p className="text-xs text-slate-500 text-center mt-3">
+        Complete daily challenges to earn points and bonuses! 🎯
+      </p>
     </div>
   );
-};
-
-export default DailyChallengeCard;
+}

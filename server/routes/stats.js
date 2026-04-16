@@ -1,3 +1,4 @@
+// server/routes/stats.js - FIXED VERSION with Points Integration
 import express from 'express';
 import { query, getOne } from '../db.js';
 import { authenticate } from '../middleware/auth.js';
@@ -18,6 +19,14 @@ router.get('/dashboard', authenticate, async (req, res) => {
     // Get user stats
     const stats = await getOne(
       'SELECT * FROM user_stats WHERE user_id = ?',
+      [req.user.id]
+    );
+
+    // Get points stats from user_points table
+    const pointsStats = await getOne(
+      `SELECT total_points, current_streak, longest_streak, last_activity_date
+       FROM user_points 
+       WHERE user_id = ?`,
       [req.user.id]
     );
 
@@ -100,38 +109,39 @@ router.get('/dashboard', authenticate, async (req, res) => {
       [req.user.id]
     );
 
-    // Calculate streak days properly
-    let streakDays = stats?.streak_days || 0;
-    const lastActivity = await getOne(
-      `SELECT MAX(created_at) as last_activity
-       FROM (
-         SELECT created_at FROM interview_sessions WHERE user_id = ?
-         UNION
-         SELECT created_at FROM mcq_sessions WHERE user_id = ?
-       ) as activities`,
-      [req.user.id, req.user.id]
-    );
+    // Calculate streak days - FIXED: Use points_streak if available
+    let streakDays = pointsStats?.current_streak || stats?.streak_days || 0;
     
-    if (lastActivity && lastActivity.last_activity) {
-      const lastDate = new Date(lastActivity.last_activity);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      lastDate.setHours(0, 0, 0, 0);
-      const diffDays = Math.floor((today - lastDate) / (1000 * 60 * 60 * 24));
+    // If no points stats, calculate from activity
+    if (!pointsStats) {
+      const lastActivity = await getOne(
+        `SELECT MAX(created_at) as last_activity
+         FROM (
+           SELECT created_at FROM interview_sessions WHERE user_id = ?
+           UNION
+           SELECT created_at FROM mcq_sessions WHERE user_id = ?
+         ) as activities`,
+        [req.user.id, req.user.id]
+      );
       
-      if (diffDays === 0) {
-        // Active today
-        if (streakDays === 0) streakDays = 1;
-      } else if (diffDays === 1) {
-        // Active yesterday, increment streak
-        streakDays = Math.max(streakDays + 1, 1);
-      } else if (diffDays > 1) {
-        // Streak broken
-        streakDays = 0;
+      if (lastActivity && lastActivity.last_activity) {
+        const lastDate = new Date(lastActivity.last_activity);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        lastDate.setHours(0, 0, 0, 0);
+        const diffDays = Math.floor((today - lastDate) / (1000 * 60 * 60 * 24));
+        
+        if (diffDays === 0) {
+          if (streakDays === 0) streakDays = 1;
+        } else if (diffDays === 1) {
+          streakDays = Math.max(streakDays + 1, 1);
+        } else if (diffDays > 1) {
+          streakDays = 0;
+        }
       }
     }
 
-    // Send response
+    // Send response with points data included
     res.json({
       stats: stats || {
         total_sessions: 0,
@@ -141,6 +151,11 @@ router.get('/dashboard', authenticate, async (req, res) => {
         best_score: 0,
         total_practice_time_seconds: 0,
         streak_days: 0
+      },
+      pointsStats: pointsStats || {
+        total_points: 0,
+        current_streak: 0,
+        longest_streak: 0
       },
       recentSessions: recentSessions || [],
       recentMCQSessions: recentMCQSessions || [],
@@ -162,6 +177,12 @@ router.get('/summary', authenticate, async (req, res) => {
   try {
     const stats = await getOne(
       'SELECT * FROM user_stats WHERE user_id = ?',
+      [req.user.id]
+    );
+
+    // Get points stats
+    const pointsStats = await getOne(
+      'SELECT total_points, current_streak, longest_streak FROM user_points WHERE user_id = ?',
       [req.user.id]
     );
 
@@ -202,7 +223,10 @@ router.get('/summary', authenticate, async (req, res) => {
         totalCorrectAnswers: 0,
         totalInterviewSessions: 0,
         averageInterviewScore: 0,
-        totalInterviewQuestions: 0
+        totalInterviewQuestions: 0,
+        totalPoints: 0,
+        currentStreak: 0,
+        longestStreak: 0
       });
     }
 
@@ -224,7 +248,12 @@ router.get('/summary', authenticate, async (req, res) => {
       // Additional interview stats
       totalInterviewSessions: interviewStats?.total_interview_sessions || 0,
       averageInterviewScore: Math.round(interviewStats?.avg_interview_score || 0),
-      totalInterviewQuestions: interviewStats?.total_interview_questions || 0
+      totalInterviewQuestions: interviewStats?.total_interview_questions || 0,
+      
+      // Points stats
+      totalPoints: pointsStats?.total_points || 0,
+      currentStreak: pointsStats?.current_streak || 0,
+      longestStreak: pointsStats?.longest_streak || 0
     });
   } catch (error) {
     console.error('Summary error:', error);
@@ -265,9 +294,23 @@ router.get('/leaderboard', authenticate, async (req, res) => {
        LIMIT 10`
     );
     
+    // Points leaderboard
+    const pointsLeaderboard = await query(
+      `SELECT u.name, u.email,
+              up.total_points,
+              up.current_streak,
+              up.longest_streak
+       FROM user_points up
+       JOIN users u ON up.user_id = u.id
+       WHERE up.total_points > 0
+       ORDER BY up.total_points DESC
+       LIMIT 10`
+    );
+    
     res.json({ 
       interviewLeaderboard: interviewLeaderboard || [],
-      mcqLeaderboard: mcqLeaderboard || []
+      mcqLeaderboard: mcqLeaderboard || [],
+      pointsLeaderboard: pointsLeaderboard || []
     });
   } catch (error) {
     console.error('Leaderboard error:', error);
@@ -307,6 +350,18 @@ router.get('/progress', authenticate, async (req, res) => {
       [req.user.id]
     );
     
+    // Points progress over time
+    const pointsProgress = await query(
+      `SELECT DATE(created_at) as date,
+              points,
+              reason
+       FROM points_history
+       WHERE user_id = ?
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      [req.user.id]
+    );
+    
     // Calculate overall progress trend
     const allProgress = [...interviewProgress, ...mcqProgress];
     const averageOverall = allProgress.length > 0 
@@ -316,11 +371,13 @@ router.get('/progress', authenticate, async (req, res) => {
     res.json({ 
       interviewProgress: interviewProgress || [],
       mcqProgress: mcqProgress || [],
+      pointsProgress: pointsProgress || [],
       summary: {
         totalDays: allProgress.length,
         averageOverallScore: averageOverall,
         bestInterviewScore: Math.max(...interviewProgress.map(p => p.avg_score), 0),
-        bestMCQScore: Math.max(...mcqProgress.map(p => p.avg_score), 0)
+        bestMCQScore: Math.max(...mcqProgress.map(p => p.avg_score), 0),
+        totalPointsEarned: pointsProgress.reduce((sum, p) => sum + (p.points || 0), 0)
       }
     });
   } catch (error) {
@@ -409,8 +466,21 @@ router.get('/activity', authenticate, async (req, res) => {
       [req.user.id, days, req.user.id, days]
     );
     
+    // Get points activity
+    const pointsActivity = await query(
+      `SELECT DATE(created_at) as date,
+              SUM(points) as points_earned,
+              COUNT(*) as activities
+       FROM points_history
+       WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+       GROUP BY DATE(created_at)
+       ORDER BY date DESC`,
+      [req.user.id, days]
+    );
+    
     res.json({ 
       activity: activity || [],
+      pointsActivity: pointsActivity || [],
       totalActiveDays: activity.length,
       streak: calculateStreak(activity)
     });
