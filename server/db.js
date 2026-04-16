@@ -269,11 +269,13 @@ export const query = async (sql, params = []) => {
   }
 };
 
+
 // Helper function to get single row
 export const getOne = async (sql, params = []) => {
   const rows = await query(sql, params);
   return rows[0] || null;
 };
+
 
 // Helper function to start a transaction
 export const beginTransaction = async () => {
