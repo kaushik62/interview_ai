@@ -290,20 +290,6 @@ export default function Dashboard() {
                     <p className="text-2xl font-bold text-white">{pointsStats.current_streak || 0} <span className="text-sm text-slate-400">days</span></p>
                   </div>
                 </div>
-                <div className="w-px h-10 bg-white/[0.1] hidden sm:block" />
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center">
-                    <Award className="w-5 h-5 text-purple-400" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-400">Global Rank</p>
-                    <p className="text-2xl font-bold text-white">
-                      {pointsStats.rank && pointsStats.rank !== "Unranked" && pointsStats.rank !== "0" 
-                        ? `#${pointsStats.rank}` 
-                        : "Unranked"}
-                    </p>
-                  </div>
-                </div>
               </div>
               {pointsStats.points_to_next_milestone > 0 && pointsStats.points_to_next_milestone !== 50 && (
                 <div className="px-4 py-2 rounded-xl bg-white/[0.05] border border-cyan-500/30">
