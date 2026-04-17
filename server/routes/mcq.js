@@ -45,7 +45,19 @@ router.get('/sessions/:sessionId', authenticate, async (req, res) => {
       [sessionId]
     );
     
-    res.json({ session, questions });
+    // Parse options for each question
+    const formattedQuestions = questions.map(q => ({
+      id: q.id,
+      question: q.question,
+      options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options,
+      correct_answer: q.correct_answer,
+      explanation: q.explanation,
+      difficulty: q.difficulty,
+      user_answer: q.user_answer,
+      is_correct: q.is_correct
+    }));
+    
+    res.json({ session, questions: formattedQuestions });
   } catch (error) {
     console.error('Error fetching session:', error);
     res.status(500).json({ error: error.message });
@@ -130,6 +142,9 @@ router.post('/sessions/:sessionId/submit', authenticate, async (req, res) => {
     const { answers } = req.body;
     const userId = req.user.id;
     
+    console.log('Submitting answers for session:', sessionId);
+    console.log('Answers:', answers);
+    
     if (!answers || !Array.isArray(answers)) {
       return res.status(400).json({ error: 'Answers array is required' });
     }
@@ -162,16 +177,28 @@ router.post('/sessions/:sessionId/submit', authenticate, async (req, res) => {
     
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i];
-      const userAnswer = answers[i];
-      const isCorrect = userAnswer === question.correct_answer;
+      const userAnswer = answers[i] !== undefined && answers[i] !== null ? answers[i] : null;
+      const isCorrect = (userAnswer !== null && userAnswer === question.correct_answer);
       
       if (isCorrect) correctCount++;
       
+      // Parse options for text display
+      let options = [];
+      try {
+        options = typeof question.options === 'string' ? JSON.parse(question.options) : question.options;
+      } catch (e) {
+        options = question.options || [];
+      }
+      
       questionResults.push({
         questionId: question.id,
-        isCorrect,
-        userAnswer,
-        correctAnswer: question.correct_answer
+        question: question.question,
+        isCorrect: isCorrect,
+        userAnswer: userAnswer,
+        userAnswerText: userAnswer !== null ? options[userAnswer] : 'Not answered',
+        correctAnswer: question.correct_answer,
+        correctAnswerText: options[question.correct_answer],
+        explanation: question.explanation || 'No explanation provided.'
       });
       
       // Update question with user's answer
@@ -184,6 +211,9 @@ router.post('/sessions/:sessionId/submit', authenticate, async (req, res) => {
     }
     
     const score = Math.round((correctCount / questions.length) * 100);
+    const pointsEarned = correctCount * 10;
+    
+    console.log(`Score: ${score}%, Correct: ${correctCount}/${questions.length}, Points: ${pointsEarned}`);
     
     // Update session
     await connection.query(
@@ -194,9 +224,6 @@ router.post('/sessions/:sessionId/submit', authenticate, async (req, res) => {
     );
     
     // Award points
-    const pointsEarned = correctCount * 10;
-    
-    // Add points to user_points
     await connection.query(
       `INSERT INTO user_points (user_id, total_points, current_streak, longest_streak, last_activity_date)
        VALUES (?, ?, 0, 0, CURDATE())
@@ -215,12 +242,19 @@ router.post('/sessions/:sessionId/submit', authenticate, async (req, res) => {
     
     await commitTransaction(connection);
     
+    // Get updated total points
+    const userPoints = await getOne(
+      `SELECT total_points FROM user_points WHERE user_id = ?`,
+      [userId]
+    );
+    
     res.json({
       success: true,
-      score,
-      correctCount,
+      score: score,
+      correctCount: correctCount,
       totalQuestions: questions.length,
-      pointsEarned,
+      pointsEarned: pointsEarned,
+      totalPoints: userPoints?.total_points || 0,
       results: questionResults
     });
     
@@ -237,6 +271,8 @@ router.get('/sessions/:sessionId/result', authenticate, async (req, res) => {
     const { sessionId } = req.params;
     const userId = req.user.id;
     
+    console.log('Fetching results for session:', sessionId);
+    
     const session = await getOne(
       `SELECT * FROM mcq_sessions WHERE id = ? AND user_id = ?`,
       [sessionId, userId]
@@ -251,26 +287,78 @@ router.get('/sessions/:sessionId/result', authenticate, async (req, res) => {
       [sessionId]
     );
     
-    // Format results
-    const results = questions.map(q => ({
-      question: q.question,
-      options: JSON.parse(q.options),
-      userAnswer: q.user_answer,
-      correctAnswer: q.correct_answer,
-      isCorrect: q.is_correct,
-      explanation: q.explanation
-    }));
+    if (questions.length === 0) {
+      return res.status(404).json({ error: 'No questions found for this session' });
+    }
+    
+    // Format results with proper answer texts
+    const results = questions.map(q => {
+      let options = [];
+      try {
+        options = typeof q.options === 'string' ? JSON.parse(q.options) : q.options;
+      } catch (e) {
+        options = q.options || [];
+      }
+      
+      return {
+        question: q.question,
+        userAnswer: q.user_answer,
+        userAnswerText: q.user_answer !== null && q.user_answer !== undefined && options[q.user_answer] 
+          ? options[q.user_answer] 
+          : 'Not answered',
+        correctAnswer: q.correct_answer,
+        correctAnswerText: options[q.correct_answer] || 'Unknown',
+        isCorrect: q.is_correct,
+        explanation: q.explanation || 'No explanation provided.',
+        options: options
+      };
+    });
+    
+    const correctCount = results.filter(r => r.isCorrect).length;
+    const score = Math.round((correctCount / questions.length) * 100);
+    const pointsEarned = correctCount * 10;
     
     res.json({
-      session,
-      results,
-      score: session.score,
-      correctCount: session.correct_count,
-      totalQuestions: session.total_questions
+      session: session,
+      score: score,
+      correctCount: correctCount,
+      totalQuestions: questions.length,
+      pointsEarned: pointsEarned,
+      results: results
     });
     
   } catch (error) {
     console.error('Error fetching results:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/mcq/sessions/:sessionId - Delete a session (FIXED)
+router.delete('/sessions/:sessionId', authenticate, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const userId = req.user.id;
+    
+    console.log('Deleting session:', sessionId, 'for user:', userId);
+    
+    // Verify session belongs to user
+    const session = await getOne(
+      `SELECT id FROM mcq_sessions WHERE id = ? AND user_id = ?`,
+      [sessionId, userId]
+    );
+    
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    // Delete session (cascade will delete related questions due to foreign key)
+    await query(`DELETE FROM mcq_sessions WHERE id = ?`, [sessionId]);
+    
+    console.log('Session deleted successfully:', sessionId);
+    res.json({ message: 'Session deleted successfully' });
+    
+  } catch (error) {
+    console.error('Error deleting session:', error);
     res.status(500).json({ error: error.message });
   }
 });

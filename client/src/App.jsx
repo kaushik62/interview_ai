@@ -60,7 +60,7 @@ export default function App() {
       <Route path="/login" element={<Guest><Login /></Guest>} />
       <Route path="/register" element={<Guest><Register /></Guest>} />
       
-      {/* Result Route - Protected but without Layout */}
+      {/* Result Route - Protected, outside Layout for cleaner display */}
       <Route 
         path="/interview/:id/result" 
         element={
@@ -70,7 +70,7 @@ export default function App() {
         } 
       />
       
-      {/* Protected Routes - Require authentication */}
+      {/* Protected Routes - Require authentication with Layout */}
       <Route element={<Protected><Layout /></Protected>}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/interview/new" element={<NewInterview />} />
