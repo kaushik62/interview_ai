@@ -3,22 +3,22 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
+import toast from 'react-hot-toast';
 
 const InterviewSession = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   
   const [questions, setQuestions] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [mcqAnswers, setMcqAnswers] = useState([]);
+  const [answers, setAnswers] = useState({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [sessionData, setSessionData] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Check if we have a valid session ID
     if (!id || id === 'undefined') {
       console.error('Invalid session ID:', id);
       setError('Invalid session ID');
@@ -26,7 +26,6 @@ const InterviewSession = () => {
       return;
     }
 
-    // Check if user is authenticated
     if (!isAuthenticated()) {
       console.error('Not authenticated');
       setError('Authentication required. Please login again.');
@@ -36,26 +35,35 @@ const InterviewSession = () => {
     }
 
     fetchSession();
-  }, [id, token, navigate, isAuthenticated]);
+  }, [id, navigate, isAuthenticated]);
 
   const fetchSession = async () => {
     try {
       console.log('Fetching session with ID:', id);
       
-      // Using api utility - no hardcoded URL
-      const response = await api.get(`/mcq/session/${id}`);
+      const response = await api.get(`/mcq/sessions/${id}`);
       
       console.log('Session data received:', response.data);
       
       setQuestions(response.data.questions || []);
       setSessionData(response.data.session);
+      
+      // Initialize answers
+      const initialAnswers = {};
+      response.data.questions.forEach((_, index) => {
+        initialAnswers[index] = {
+          answerIndex: null,
+          answerText: null
+        };
+      });
+      setAnswers(initialAnswers);
+      
       setLoading(false);
       
     } catch (error) {
       console.error('Error fetching session:', error);
       
       if (error.response?.status === 401) {
-        // Token expired or invalid
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         navigate('/login');
@@ -65,95 +73,98 @@ const InterviewSession = () => {
       setError(error.response?.data?.error || 'Failed to load session');
       setLoading(false);
       
-      // Redirect after 3 seconds
       setTimeout(() => {
         navigate('/dashboard');
       }, 3000);
     }
   };
 
-  const submitAnswer = async (selectedIndex) => {
-    const newAnswers = [...mcqAnswers, selectedIndex];
-    setMcqAnswers(newAnswers);
+  const handleAnswerSelect = (selectedIndex) => {
+    const currentQuestion = questions[currentIndex];
+    const selectedText = currentQuestion?.options[selectedIndex];
     
-    if (currentIndex + 1 >= questions.length) {
-      // Quiz finished - submit all answers
-      setSubmitting(true);
-      try {
-        // Using api utility - no hardcoded URL
-        const response = await api.post(`/mcq/submit/${id}`, { answers: newAnswers });
-        
-        // Add points for quiz completion
-        await addQuizPoints(response.data.score, response.data.totalQuestions);
-        
-        navigate(`/interview/${id}/result`, { state: { results: response.data } });
-      } catch (error) {
-        console.error('Error submitting answers:', error);
-        
-        if (error.response?.status === 401) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          navigate('/login');
-          return;
-        }
-        
-        alert(error.response?.data?.error || 'Failed to submit answers. Please try again.');
-        setSubmitting(false);
+    setAnswers(prev => ({
+      ...prev,
+      [currentIndex]: {
+        answerIndex: selectedIndex,
+        answerText: selectedText
       }
-    } else {
+    }));
+  };
+
+  const handleNext = () => {
+    // Auto-skip: Just move to next question without any validation
+    if (currentIndex + 1 < questions.length) {
       setCurrentIndex(currentIndex + 1);
     }
   };
 
-  // Function to add points for quiz completion
-  const addQuizPoints = async (score, totalQuestions) => {
-    try {
-      const response = await api.post('/points/add-quiz-points', {
-        score: score,
-        totalQuestions: totalQuestions
-      });
-      
-      console.log('Points added:', response.data);
-      
-      // Show points notification
-      if (response.data.pointsAdded > 0) {
-        showPointsNotification(response.data);
-      }
-    } catch (error) {
-      console.error('Error adding points:', error);
-      // Don't block the user experience if points API fails
+  const handlePrevious = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1);
     }
   };
 
-  // Show points notification (you can customize this)
-  const showPointsNotification = (pointsData) => {
-    // Create a temporary notification div
-    const notification = document.createElement('div');
-    notification.className = 'fixed top-20 right-4 z-50 glass-card p-4 animate-slide-in';
-    notification.innerHTML = `
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center">
-          <span class="text-xl">🎉</span>
-        </div>
-        <div>
-          <p class="text-white font-bold">+${pointsData.pointsAdded} Points!</p>
-          <p class="text-xs text-slate-400">${pointsData.streakMessage || 'Quiz completed!'}</p>
-        </div>
-      </div>
-    `;
+  const handleSubmit = async () => {
+    const unansweredCount = Object.values(answers).filter(a => a?.answerIndex === null).length;
     
-    document.body.appendChild(notification);
+    if (unansweredCount > 0) {
+      const confirmSubmit = window.confirm(
+        `You have ${unansweredCount} unanswered question(s). Unanswered questions will be marked incorrect. Are you sure you want to submit?`
+      );
+      if (!confirmSubmit) {
+        return;
+      }
+    }
+
+    setSubmitting(true);
     
-    // Remove after 3 seconds
-    setTimeout(() => {
-      notification.remove();
-    }, 3000);
+    try {
+      // Convert answers object to array of answer indices (null for unanswered)
+      const answersArray = Object.keys(answers)
+        .sort((a, b) => parseInt(a) - parseInt(b))
+        .map(key => answers[key]?.answerIndex !== undefined && answers[key]?.answerIndex !== null 
+          ? answers[key].answerIndex 
+          : null);
+      
+      console.log('Submitting answers:', answersArray);
+      
+      const response = await api.post(`/mcq/sessions/${id}/submit`, { 
+        answers: answersArray 
+      });
+      
+      console.log('Submit response:', response.data);
+      
+      toast.success(`Quiz completed! You scored ${response.data.score}%`);
+      
+      // Pass both results and questions with answers to result page
+      navigate(`/interview/${id}/result`, { 
+        state: { 
+          results: response.data,
+          questions: questions,
+          userAnswers: answers
+        } 
+      });
+      
+    } catch (error) {
+      console.error('Error submitting quiz:', error);
+      
+      if (error.response?.status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        navigate('/login');
+        return;
+      }
+      
+      toast.error(error.response?.data?.error || 'Failed to submit quiz. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  // Show error state
   if (error) {
     return (
-      <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-[#0a0a0a] via-[#1a1a2e] to-[#16213e] flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4">
             <span className="text-2xl">⚠️</span>
@@ -162,7 +173,7 @@ const InterviewSession = () => {
           <p className="text-slate-400 text-sm mb-4">{error}</p>
           <button
             onClick={() => navigate('/dashboard')}
-            className="btn-electric text-sm px-5 py-2.5"
+            className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 text-white font-medium hover:opacity-90 transition-all"
           >
             Back to Dashboard
           </button>
@@ -173,9 +184,9 @@ const InterviewSession = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-[#0a0a0a] via-[#1a1a2e] to-[#16213e] flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 rounded-full border-2 border-electric-500/20 border-t-electric-500 animate-spin mx-auto mb-4" />
+          <div className="w-12 h-12 rounded-full border-2 border-cyan-500/20 border-t-cyan-500 animate-spin mx-auto mb-4" />
           <p className="text-slate-400">Loading quiz...</p>
         </div>
       </div>
@@ -184,12 +195,12 @@ const InterviewSession = () => {
 
   if (!questions.length) {
     return (
-      <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-[#0a0a0a] via-[#1a1a2e] to-[#16213e] flex items-center justify-center">
         <div className="text-center">
           <p className="text-slate-400 mb-4">No questions found for this quiz.</p>
           <button
             onClick={() => navigate('/dashboard')}
-            className="btn-electric text-sm px-5 py-2.5"
+            className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 text-white font-medium hover:opacity-90 transition-all"
           >
             Back to Dashboard
           </button>
@@ -199,77 +210,155 @@ const InterviewSession = () => {
   }
 
   const currentQuestion = questions[currentIndex];
+  const isLastQuestion = currentIndex === questions.length - 1;
+  const isFirstQuestion = currentIndex === 0;
+  const answeredCount = Object.values(answers).filter(a => a?.answerIndex !== null).length;
+  const isCurrentAnswered = answers[currentIndex]?.answerIndex !== null;
 
   return (
-    <div className="min-h-screen bg-ink-950 py-8 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#0a0a0a] via-[#1a1a2e] to-[#16213e] py-8 px-4">
       <div className="max-w-3xl mx-auto">
+        
         {/* Header */}
         <div className="mb-6">
           <button
             onClick={() => navigate('/dashboard')}
-            className="text-slate-400 hover:text-white transition-colors mb-4"
+            className="text-slate-400 hover:text-white transition-colors mb-4 flex items-center gap-2"
           >
             ← Back to Dashboard
           </button>
         </div>
 
         {/* Progress Bar */}
-        <div className="mb-8">
+        <div className="glass-card p-4 rounded-xl mb-6">
           <div className="flex justify-between text-sm text-slate-400 mb-2">
             <span>Question {currentIndex + 1} of {questions.length}</span>
-            <span>{Math.round(((currentIndex + 1) / questions.length) * 100)}% Complete</span>
+            <span>{answeredCount} of {questions.length} answered</span>
           </div>
-          <div className="h-2 bg-ink-800 rounded-full overflow-hidden">
+          <div className="h-2 bg-white/[0.06] rounded-full overflow-hidden">
             <div 
-              className="h-full bg-electric-500 transition-all duration-300"
+              className="h-full bg-gradient-to-r from-cyan-500 to-purple-500 transition-all duration-300"
               style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
             />
           </div>
         </div>
 
         {/* Question Card */}
-        <div className="bg-ink-900 rounded-xl border border-ink-800 p-6 mb-6">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="px-2 py-1 bg-electric-500/10 text-electric-400 text-xs rounded-full">
-              Multiple Choice
-            </span>
-            <span className="px-2 py-1 bg-ink-800 text-slate-400 text-xs rounded-full">
-              {sessionData?.job_role || 'Quiz'}
-            </span>
+        <div className="glass-card p-6 rounded-xl mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-1 bg-cyan-500/10 text-cyan-400 text-xs rounded-full">
+                Multiple Choice
+              </span>
+              <span className="px-2 py-1 bg-white/[0.06] text-slate-400 text-xs rounded-full">
+                {sessionData?.job_role || 'Quiz'}
+              </span>
+            </div>
+            {!isCurrentAnswered && (
+              <span className="px-2 py-1 bg-yellow-500/10 text-yellow-400 text-xs rounded-full">
+                Not answered yet
+              </span>
+            )}
           </div>
           
           <h2 className="text-xl font-bold text-white mb-6">
-            {currentQuestion.question}
+            {currentQuestion?.question}
           </h2>
           
           <div className="space-y-3">
-            {currentQuestion.options.map((option, idx) => (
-              <button
+            {currentQuestion?.options?.map((option, idx) => (
+              <label
                 key={idx}
-                onClick={() => submitAnswer(idx)}
-                disabled={submitting}
-                className="w-full text-left p-4 bg-ink-800 hover:bg-ink-700 rounded-lg border border-ink-700 hover:border-electric-500 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-all border
+                  ${answers[currentIndex]?.answerIndex === idx 
+                    ? 'border-cyan-500 bg-cyan-500/10' 
+                    : 'border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06]'
+                  }`}
               >
-                <span className="font-mono text-electric-400 font-bold mr-3">
-                  {String.fromCharCode(65 + idx)}.
-                </span>
-                <span className="text-slate-200">{option}</span>
-              </button>
+                <input
+                  type="radio"
+                  name="question"
+                  value={idx}
+                  checked={answers[currentIndex]?.answerIndex === idx}
+                  onChange={() => handleAnswerSelect(idx)}
+                  disabled={submitting}
+                  className="w-4 h-4 text-cyan-500"
+                />
+                <span className="text-slate-300">{option}</span>
+              </label>
             ))}
           </div>
         </div>
 
-        {submitting && (
-          <div className="text-center text-slate-400">
-            <div className="inline-flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full border-2 border-electric-500/20 border-t-electric-500 animate-spin" />
-              Submitting your answers...
-            </div>
+        {/* Navigation Buttons */}
+        <div className="flex justify-between gap-4">
+          <button
+            onClick={handlePrevious}
+            disabled={isFirstQuestion}
+            className={`px-6 py-2 rounded-lg font-medium transition-all
+              ${isFirstQuestion 
+                ? 'bg-white/[0.03] text-slate-600 cursor-not-allowed' 
+                : 'bg-white/[0.06] text-slate-300 hover:bg-white/[0.1]'
+              }`}
+          >
+            Previous
+          </button>
+          
+          {!isLastQuestion ? (
+            <button
+              onClick={handleNext}
+              className="px-6 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 text-white font-medium hover:opacity-90 transition-all"
+            >
+              Next
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="px-6 py-2 rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 text-white font-medium hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? 'Submitting...' : 'Submit Quiz'}
+            </button>
+          )}
+        </div>
+
+        {/* Question Navigator */}
+        <div className="mt-6">
+          <p className="text-xs text-slate-500 mb-2 text-center">Jump to question:</p>
+          <div className="flex flex-wrap gap-2 justify-center">
+            {questions.map((_, idx) => {
+              const isAnswered = answers[idx]?.answerIndex !== null;
+              
+              return (
+                <button
+                  key={idx}
+                  onClick={() => setCurrentIndex(idx)}
+                  className={`w-8 h-8 rounded-lg text-sm font-medium transition-all
+                    ${currentIndex === idx 
+                      ? 'bg-cyan-500 text-white' 
+                      : isAnswered
+                        ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                        : 'bg-white/[0.06] text-slate-400 hover:bg-white/[0.1]'
+                    }`}
+                >
+                  {idx + 1}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Unanswered Warning */}
+        {answeredCount < questions.length && (
+          <div className="mt-4 p-3 bg-yellow-500/10 rounded-lg text-center border border-yellow-500/20">
+            <p className="text-xs text-yellow-400">
+              ⚠️ {questions.length - answeredCount} question(s) not answered yet. You can review them before submitting.
+            </p>
           </div>
         )}
 
         {/* Points Info Bar */}
-        <div className="mt-6 p-3 bg-ink-800/50 rounded-lg text-center">
+        <div className="mt-4 p-3 bg-white/[0.03] rounded-lg text-center border border-white/[0.08]">
           <p className="text-xs text-slate-500">
             Complete this quiz to earn points and increase your streak! 🔥
           </p>

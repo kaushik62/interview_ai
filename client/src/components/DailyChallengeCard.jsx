@@ -1,5 +1,5 @@
 // components/DailyChallengeCard.jsx - FIXED VERSION
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
 import { Calendar, Zap, Trophy, CheckCircle, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -12,6 +12,7 @@ export default function DailyChallengeCard({ onPointsUpdate }) {
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const isMounted = useRef(true);
 
   const loadChallenge = async () => {
     try {
@@ -20,36 +21,48 @@ export default function DailyChallengeCard({ onPointsUpdate }) {
       console.log('Loading daily challenge...');
       const response = await api.get('/points/daily-challenge');
       console.log('Daily challenge response:', response.data);
-      setChallenge(response.data);
       
-      // Reset states for new challenge
-      if (!response.data.hasCompleted) {
-        setAnswers({});
-        setSubmitted(false);
-        setResult(null);
-      } else {
-        setSubmitted(true);
+      if (isMounted.current) {
+        setChallenge(response.data);
+        
+        // Reset states for new challenge
+        if (!response.data.hasCompleted) {
+          setAnswers({});
+          setSubmitted(false);
+          setResult(null);
+        } else {
+          setSubmitted(true);
+        }
       }
     } catch (err) {
       console.error('Failed to load daily challenge:', err);
-      setError(err.response?.data?.error || 'Failed to load challenge');
-      if (err.response?.status !== 503) {
-        toast.error('Failed to load daily challenge');
+      if (isMounted.current) {
+        setError(err.response?.data?.error || 'Failed to load challenge');
+        if (err.response?.status !== 503) {
+          toast.error('Failed to load daily challenge');
+        }
       }
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
+    isMounted.current = true;
     loadChallenge();
+    
+    return () => {
+      isMounted.current = false;
+    };
   }, []);
 
-  const handleAnswerSelect = (questionId, answerIndex) => {
+  const handleAnswerSelect = (questionIndex, answerIndex) => {
     if (submitted) return;
     setAnswers(prev => ({
       ...prev,
-      [questionId]: answerIndex
+      [questionIndex]: answerIndex
     }));
   };
 
@@ -65,48 +78,65 @@ export default function DailyChallengeCard({ onPointsUpdate }) {
     try {
       setSubmitting(true);
       
-      // Convert answers object to array format
-      const answersArray = Object.keys(answers)
-        .sort((a, b) => parseInt(a) - parseInt(b))
-        .map(questionId => answers[questionId]);
+      // Convert answers object to array format (0-indexed)
+      const answersArray = [];
+      for (let i = 0; i < totalQuestions; i++) {
+        // Questions are 0-indexed in the array, but answers stored with keys 0,1,2...
+        answersArray.push(answers[i] !== undefined ? answers[i] : null);
+      }
       
-      console.log('Submitting answers:', answersArray);
+      console.log('Submitting answers array:', answersArray);
       
       const response = await api.post('/points/daily-challenge/submit', {
         answers: answersArray
       });
       
       console.log('Submit response:', response.data);
-      setResult(response.data);
-      setSubmitted(true);
       
-      // Show success message with points
-      toast.success(response.data.message || `You earned ${response.data.pointsEarned} points!`);
-      
-      // IMPORTANT: Notify parent component to refresh points
-      if (onPointsUpdate) {
-        await onPointsUpdate();
+      if (isMounted.current) {
+        setResult(response.data);
+        setSubmitted(true);
+        
+        // Show success message with points
+        toast.success(response.data.message || `You earned ${response.data.pointsEarned} points!`);
+        
+        // Notify parent component to refresh points
+        if (onPointsUpdate) {
+          await onPointsUpdate();
+        }
+        
+        // Dispatch event for other components
+        window.dispatchEvent(new CustomEvent('points-updated'));
+        
+        // Reload challenge to update completion status after 2 seconds
+        setTimeout(() => {
+          if (isMounted.current) {
+            loadChallenge();
+          }
+        }, 2000);
       }
-      
-      // Also refresh streak card by dispatching a custom event
-      window.dispatchEvent(new CustomEvent('pointsUpdated'));
-      
-      // Reload challenge to update completion status
-      setTimeout(() => {
-        loadChallenge();
-      }, 2000);
       
     } catch (err) {
       console.error('Failed to submit challenge:', err);
       const errorMsg = err.response?.data?.error || 'Failed to submit challenge';
-      toast.error(errorMsg);
       
-      if (err.response?.data?.alreadyCompleted) {
-        setSubmitted(true);
+      if (isMounted.current) {
+        toast.error(errorMsg);
+        
+        if (err.response?.data?.alreadyCompleted) {
+          setSubmitted(true);
+          loadChallenge(); // Reload to show completed status
+        }
       }
     } finally {
-      setSubmitting(false);
+      if (isMounted.current) {
+        setSubmitting(false);
+      }
     }
+  };
+
+  const handleRetry = () => {
+    loadChallenge();
   };
 
   if (loading) {
@@ -132,7 +162,7 @@ export default function DailyChallengeCard({ onPointsUpdate }) {
         <p className="text-slate-400 text-sm font-medium">Daily Challenge</p>
         <p className="text-slate-500 text-xs mt-1">{error}</p>
         <button 
-          onClick={loadChallenge}
+          onClick={handleRetry}
           className="mt-3 text-xs text-electric-400 hover:text-electric-300 flex items-center gap-1 mx-auto"
         >
           <RefreshCw className="w-3 h-3" /> Try Again →
@@ -163,7 +193,7 @@ export default function DailyChallengeCard({ onPointsUpdate }) {
             <Trophy className={`w-4 h-4 ${isPerfect ? 'text-yellow-400' : isGood ? 'text-electric-400' : 'text-slate-400'}`} />
             Challenge Complete!
           </h3>
-          <span className="text-xs text-slate-500">{challenge.challengeId?.split('-')[1]}</span>
+          <span className="text-xs text-slate-500">{challenge.challengeDate || challenge.challengeId?.split('-')[1]}</span>
         </div>
 
         {/* Score Display */}
@@ -206,8 +236,8 @@ export default function DailyChallengeCard({ onPointsUpdate }) {
                     <XCircle className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />
                   )}
                   <div className="flex-1">
-                    <p className="text-xs text-slate-300">{question.question.substring(0, 100)}...</p>
-                    {!res.isCorrect && (
+                    <p className="text-xs text-slate-300">{question?.question?.substring(0, 100) || res.question?.substring(0, 100)}...</p>
+                    {!res.isCorrect && res.correctAnswerText && (
                       <p className="text-xs text-slate-500 mt-1">
                         Correct: {res.correctAnswerText}
                       </p>
@@ -220,10 +250,7 @@ export default function DailyChallengeCard({ onPointsUpdate }) {
         </div>
 
         <button
-          onClick={() => {
-            loadChallenge();
-            if (onPointsUpdate) onPointsUpdate();
-          }}
+          onClick={handleRetry}
           className="w-full py-2 rounded-lg bg-white/[0.06] border border-white/[0.08]
                      text-slate-300 text-sm hover:bg-white/[0.1] transition-all"
         >
@@ -243,7 +270,7 @@ export default function DailyChallengeCard({ onPointsUpdate }) {
         <p className="text-white font-display font-semibold mb-1">Challenge Completed!</p>
         <p className="text-slate-400 text-sm">Come back tomorrow for a new challenge</p>
         <button
-          onClick={loadChallenge}
+          onClick={handleRetry}
           className="mt-3 text-xs text-electric-400 hover:text-electric-300"
         >
           Refresh →
@@ -260,7 +287,7 @@ export default function DailyChallengeCard({ onPointsUpdate }) {
           Daily Challenge
         </h3>
         <span className="text-xs text-slate-500">
-          {challenge.challengeId?.split('-')[1]}
+          {challenge.challengeDate || challenge.challengeId?.split('-')[1]}
         </span>
       </div>
 
@@ -279,7 +306,7 @@ export default function DailyChallengeCard({ onPointsUpdate }) {
                 <label
                   key={optIdx}
                   className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all
-                    ${answers[idx + 1] === optIdx 
+                    ${answers[idx] === optIdx 
                       ? 'bg-electric-500/20 border border-electric-500/30' 
                       : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.06]'
                     }`}
@@ -288,8 +315,8 @@ export default function DailyChallengeCard({ onPointsUpdate }) {
                     type="radio"
                     name={`q${idx}`}
                     value={optIdx}
-                    checked={answers[idx + 1] === optIdx}
-                    onChange={() => handleAnswerSelect(idx + 1, optIdx)}
+                    checked={answers[idx] === optIdx}
+                    onChange={() => handleAnswerSelect(idx, optIdx)}
                     disabled={submitting}
                     className="w-3 h-3 text-electric-500"
                   />

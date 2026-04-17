@@ -15,11 +15,50 @@ const dbConfig = {
   timezone: '+05:30',
 };
 
-const pool = mysql.createPool(dbConfig);
+// Create pool without database first for initial connection
+const getInitialConnection = async () => {
+  return await mysql.createConnection({
+    host: dbConfig.host,
+    port: dbConfig.port,
+    user: dbConfig.user,
+    password: dbConfig.password,
+  });
+};
+
+// Ensure database exists
+const ensureDatabase = async () => {
+  const databaseName = dbConfig.database;
+  let connection;
+  
+  try {
+    connection = await getInitialConnection();
+    await connection.query(`CREATE DATABASE IF NOT EXISTS \`${databaseName}\``);
+    console.log(`✅ Database '${databaseName}' ensured`);
+  } catch (error) {
+    console.error('❌ Error creating database:', error.message);
+    throw error;
+  } finally {
+    if (connection) await connection.end();
+  }
+};
+
+// Create pool with database
+let pool = null;
+
+const createPool = async () => {
+  await ensureDatabase();
+  
+  pool = mysql.createPool(dbConfig);
+  return pool;
+};
+
+// Initialize pool
+await createPool();
 
 // Test database connection
 export const testConnection = async () => {
   try {
+    if (!pool) await createPool();
     const connection = await pool.getConnection();
     console.log('✅ Database connected successfully');
     connection.release();
@@ -133,20 +172,20 @@ export const initDB = async () => {
 
     // User resumes table
     await conn.query(`
-  CREATE TABLE IF NOT EXISTS user_resumes (
-    id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL,
-    file_name VARCHAR(255) NOT NULL,
-    file_path VARCHAR(500) NOT NULL,
-    resume_text LONGTEXT,
-    analysis JSON,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_user_id (user_id)
-  )
-`);
+      CREATE TABLE IF NOT EXISTS user_resumes (
+        id VARCHAR(36) PRIMARY KEY,
+        user_id VARCHAR(36) NOT NULL,
+        file_name VARCHAR(255) NOT NULL,
+        file_path VARCHAR(500) NOT NULL,
+        resume_text LONGTEXT,
+        analysis JSON,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_user_id (user_id)
+      )
+    `);
 
-    // MCQ Questions table - FIXED: using 'question_number' instead of 'question_num' for consistency
+    // MCQ Questions table
     await conn.query(`
       CREATE TABLE IF NOT EXISTS mcq_questions (
         id VARCHAR(36) PRIMARY KEY,
@@ -169,75 +208,79 @@ export const initDB = async () => {
       )
     `);
 
-    // Add this inside your initDB function in db.js
-
     // User points table
     await conn.query(`
-  CREATE TABLE IF NOT EXISTS user_points (
-    user_id VARCHAR(36) PRIMARY KEY,
-    total_points INT DEFAULT 0,
-    current_streak INT DEFAULT 0,
-    longest_streak INT DEFAULT 0,
-    last_activity_date DATE,
-    total_daily_challenges_completed INT DEFAULT 0,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  )
-`);
+      CREATE TABLE IF NOT EXISTS user_points (
+        user_id VARCHAR(36) PRIMARY KEY,
+        total_points INT DEFAULT 0,
+        current_streak INT DEFAULT 0,
+        longest_streak INT DEFAULT 0,
+        last_activity_date DATE,
+        total_daily_challenges_completed INT DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
 
     // Points history table
     await conn.query(`
-  CREATE TABLE IF NOT EXISTS points_history (
-    id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL,
-    points INT NOT NULL,
-    reason VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_user_id (user_id)
-  )
-`);
+      CREATE TABLE IF NOT EXISTS points_history (
+        id VARCHAR(36) PRIMARY KEY,
+        user_id VARCHAR(36) NOT NULL,
+        points INT NOT NULL,
+        reason VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_user_id (user_id)
+      )
+    `);
 
     // Daily challenges table
     await conn.query(`
-  CREATE TABLE IF NOT EXISTS daily_challenges (
-    id VARCHAR(36) PRIMARY KEY,
-    challenge_date DATE NOT NULL,
-    questions JSON NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_date (challenge_date)
-  )
-`);
+      CREATE TABLE IF NOT EXISTS daily_challenges (
+        id VARCHAR(36) PRIMARY KEY,
+        challenge_date DATE NOT NULL,
+        questions JSON NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_date (challenge_date)
+      )
+    `);
 
     // User challenge completions table
     await conn.query(`
-  CREATE TABLE IF NOT EXISTS user_challenge_completions (
-    id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL,
-    challenge_date DATE NOT NULL,
-    score INT DEFAULT 0,
-    completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_user_challenge (user_id, challenge_date)
-  )
-`);
+      CREATE TABLE IF NOT EXISTS user_challenge_completions (
+        id VARCHAR(36) PRIMARY KEY,
+        user_id VARCHAR(36) NOT NULL,
+        challenge_id VARCHAR(36) NOT NULL,
+        challenge_date DATE NOT NULL,
+        score INT DEFAULT 0,
+        points_earned INT DEFAULT 0,
+        answers JSON DEFAULT NULL,
+        completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (challenge_id) REFERENCES daily_challenges(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_user_challenge (user_id, challenge_date),
+        INDEX idx_user_id (user_id),
+        INDEX idx_challenge_date (challenge_date)
+      )
+    `);
 
-    // Leaderboard cache table - FIXED (rank is reserved keyword)
+    // Leaderboard cache table
     await conn.query(`
-  CREATE TABLE IF NOT EXISTS leaderboard_cache (
-    id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(36) NOT NULL,
-    user_name VARCHAR(100),
-    total_points INT DEFAULT 0,
-    current_streak INT DEFAULT 0,
-    longest_streak INT DEFAULT 0,
-    \`rank\` INT DEFAULT 0,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_rank (\`rank\`),
-    INDEX idx_points (total_points)
-  )
-`);
+      CREATE TABLE IF NOT EXISTS leaderboard_cache (
+        id VARCHAR(36) PRIMARY KEY,
+        user_id VARCHAR(36) NOT NULL,
+        user_name VARCHAR(100),
+        total_points INT DEFAULT 0,
+        current_streak INT DEFAULT 0,
+        longest_streak INT DEFAULT 0,
+        \`rank\` INT DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_rank (\`rank\`),
+        INDEX idx_points (total_points)
+      )
+    `);
 
     console.log('✅ Database tables initialized successfully');
     console.log('   - users');
@@ -246,6 +289,12 @@ export const initDB = async () => {
     console.log('   - user_stats');
     console.log('   - mcq_sessions');
     console.log('   - mcq_questions');
+    console.log('   - user_resumes');
+    console.log('   - user_points');
+    console.log('   - points_history');
+    console.log('   - daily_challenges');
+    console.log('   - user_challenge_completions');
+    console.log('   - leaderboard_cache');
 
   } catch (error) {
     console.error('❌ Database initialization error:', error.message);
@@ -259,6 +308,7 @@ export const initDB = async () => {
 // Helper function to execute queries with error handling
 export const query = async (sql, params = []) => {
   try {
+    if (!pool) await createPool();
     const [rows] = await pool.execute(sql, params);
     return rows;
   } catch (error) {
@@ -269,16 +319,15 @@ export const query = async (sql, params = []) => {
   }
 };
 
-
 // Helper function to get single row
 export const getOne = async (sql, params = []) => {
   const rows = await query(sql, params);
   return rows[0] || null;
 };
 
-
 // Helper function to start a transaction
 export const beginTransaction = async () => {
+  if (!pool) await createPool();
   const connection = await pool.getConnection();
   await connection.beginTransaction();
   return connection;
@@ -294,27 +343,6 @@ export const commitTransaction = async (connection) => {
 export const rollbackTransaction = async (connection) => {
   await connection.rollback();
   connection.release();
-};
-
-// Check if database exists and create if not
-export const ensureDatabase = async () => {
-  const databaseName = dbConfig.database;
-  const connection = await mysql.createConnection({
-    host: dbConfig.host,
-    port: dbConfig.port,
-    user: dbConfig.user,
-    password: dbConfig.password,
-  });
-
-  try {
-    await connection.query(`CREATE DATABASE IF NOT EXISTS \`${databaseName}\``);
-    console.log(`✅ Database '${databaseName}' ensured`);
-  } catch (error) {
-    console.error('❌ Error creating database:', error.message);
-    throw error;
-  } finally {
-    await connection.end();
-  }
 };
 
 export default pool;

@@ -1,4 +1,3 @@
-// server/routes/auth.js
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
@@ -11,8 +10,6 @@ const router = express.Router();
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
-
-    console.log('Registration attempt for:', email);
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Name, email and password are required' });
@@ -27,55 +24,41 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
-    // Check if user exists
     const existing = await getOne('SELECT id FROM users WHERE email = ?', [email.toLowerCase()]);
     if (existing) {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
-    // Hash password with try-catch
-    let passwordHash;
-    try {
-      const salt = await bcrypt.genSalt(10);
-      passwordHash = await bcrypt.hash(password, salt);
-      console.log('Password hashed successfully');
-    } catch (hashError) {
-      console.error('Hashing error:', hashError);
-      return res.status(500).json({ error: 'Error processing password' });
-    }
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
 
     const userId = uuidv4();
 
-    // Insert user
     await query(
       'INSERT INTO users (id, name, email, password) VALUES (?, ?, ?, ?)',
       [userId, name, email.toLowerCase(), passwordHash]
     );
 
-    // Initialize user stats
     await query(
       `INSERT INTO user_stats (user_id, total_sessions, completed_sessions, total_questions_answered, average_score, best_score, total_practice_time_seconds, streak_days) 
-       VALUES (?, 0, 0, 0, 0, 0, 0, 0)
-       ON DUPLICATE KEY UPDATE user_id = user_id`,
+       VALUES (?, 0, 0, 0, 0, 0, 0, 0)`,
       [userId]
     );
 
-    // Generate token
+    await query(
+      `INSERT INTO user_points (user_id, total_points, current_streak, longest_streak, last_activity_date, total_daily_challenges_completed) 
+       VALUES (?, 0, 0, 0, CURDATE(), 0)`,
+      [userId]
+    );
+
     const token = generateToken(userId);
     
-    // Get user data
     const user = await getOne(
       'SELECT id, name, email, avatar_url, created_at FROM users WHERE id = ?',
       [userId]
     );
 
-    console.log('Registration successful for:', email);
-
-    res.status(201).json({ 
-      token, 
-      user,
-      message: 'Registration successful!'
-    });
+    res.status(201).json({ token, user, message: 'Registration successful!' });
     
   } catch (err) {
     console.error('Register error:', err);
@@ -88,63 +71,35 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    console.log('Login attempt for email:', email);
-
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    // Get user with password
-    let user;
-    try {
-      user = await getOne('SELECT * FROM users WHERE email = ?', [email.toLowerCase()]);
-    } catch (dbError) {
-      console.error('Database error:', dbError);
-      return res.status(500).json({ error: 'Database error' });
-    }
+    const user = await getOne('SELECT * FROM users WHERE email = ?', [email.toLowerCase()]);
     
     if (!user) {
-      console.log('User not found:', email);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    console.log('User found, verifying password...');
-    console.log('Stored hash:', user.password);
-
-    // Check password with try-catch
-    let valid = false;
-    try {
-      valid = await bcrypt.compare(password, user.password);
-      console.log('Password comparison result:', valid);
-    } catch (compareError) {
-      console.error('bcrypt compare error:', compareError);
-      return res.status(500).json({ error: 'Error verifying password' });
-    }
+    const valid = await bcrypt.compare(password, user.password);
     
     if (!valid) {
-      console.log('Invalid password for user:', email);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    console.log('Password valid, generating token...');
+    const token = generateToken(user.id);
 
-    // Generate token
-    let token;
-    try {
-      token = generateToken(user.id);
-    } catch (tokenError) {
-      console.error('Token generation error:', tokenError);
-      return res.status(500).json({ error: 'Error generating token' });
+    const pointsExist = await getOne('SELECT user_id FROM user_points WHERE user_id = ?', [user.id]);
+    if (!pointsExist) {
+      await query(
+        `INSERT INTO user_points (user_id, total_points, current_streak, longest_streak, last_activity_date, total_daily_challenges_completed) 
+         VALUES (?, 0, 0, 0, CURDATE(), 0)`,
+        [user.id]
+      );
     }
 
-    // Update last login time (optional, ignore if fails)
-    try {
-      await query('UPDATE users SET updated_at = NOW() WHERE id = ?', [user.id]);
-    } catch (updateErr) {
-      console.log('Could not update last login time:', updateErr.message);
-    }
+    await query('UPDATE users SET updated_at = NOW() WHERE id = ?', [user.id]);
 
-    // Return user data
     res.json({
       token,
       user: {
@@ -158,8 +113,7 @@ router.post('/login', async (req, res) => {
     });
     
   } catch (err) {
-    console.error('Login error details:', err);
-    console.error('Error stack:', err.stack);
+    console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed: ' + err.message });
   }
 });
@@ -168,12 +122,19 @@ router.post('/login', async (req, res) => {
 router.get('/me', authenticate, async (req, res) => {
   try {
     const stats = await getOne('SELECT * FROM user_stats WHERE user_id = ?', [req.user.id]);
+    const points = await getOne('SELECT * FROM user_points WHERE user_id = ?', [req.user.id]);
     
     const recentActivity = await query(
       `SELECT 
         (SELECT COUNT(*) FROM interview_sessions WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) as recent_interviews,
         (SELECT COUNT(*) FROM mcq_sessions WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) as recent_mcq`,
       [req.user.id, req.user.id]
+    );
+    
+    const today = new Date().toISOString().split('T')[0];
+    const todayChallenge = await getOne(
+      'SELECT * FROM user_challenge_completions WHERE user_id = ? AND challenge_date = ?',
+      [req.user.id, today]
     );
     
     res.json({ 
@@ -187,7 +148,13 @@ router.get('/me', authenticate, async (req, res) => {
         total_practice_time_seconds: 0,
         streak_days: 0
       },
-      recentActivity: recentActivity[0] || { recent_interviews: 0, recent_mcq: 0 }
+      points: points || {
+        total_points: 0,
+        current_streak: 0,
+        longest_streak: 0
+      },
+      recentActivity: recentActivity[0] || { recent_interviews: 0, recent_mcq: 0 },
+      todayChallengeCompleted: !!todayChallenge
     });
     
   } catch (err) {
@@ -202,7 +169,7 @@ router.put('/profile', authenticate, async (req, res) => {
     const { name, avatar_url } = req.body;
     
     if (!name && !avatar_url) {
-      return res.status(400).json({ error: 'At least one field (name or avatar_url) is required' });
+      return res.status(400).json({ error: 'At least one field is required' });
     }
 
     const updates = [];
@@ -221,20 +188,14 @@ router.put('/profile', authenticate, async (req, res) => {
     updates.push('updated_at = NOW()');
     values.push(req.user.id);
     
-    await query(
-      `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
-      values
-    );
+    await query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
     
     const updated = await getOne(
       'SELECT id, name, email, avatar_url, created_at FROM users WHERE id = ?',
       [req.user.id]
     );
     
-    res.json({ 
-      user: updated,
-      message: 'Profile updated successfully!'
-    });
+    res.json({ user: updated, message: 'Profile updated successfully!' });
     
   } catch (err) {
     console.error('Profile update error:', err);
@@ -277,12 +238,7 @@ router.put('/change-password', authenticate, async (req, res) => {
 
 // POST /api/auth/logout
 router.post('/logout', authenticate, async (req, res) => {
-  try {
-    res.json({ message: 'Logged out successfully' });
-  } catch (err) {
-    console.error('Logout error:', err);
-    res.status(500).json({ error: 'Logout failed' });
-  }
+  res.json({ message: 'Logged out successfully' });
 });
 
 // DELETE /api/auth/account

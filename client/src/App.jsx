@@ -12,21 +12,41 @@ import Layout from './components/Layout';
 import DailyChallenge from './pages/DailyChallenge';
 
 const Protected = ({ children }) => {
-  const { user, loading } = useAuth();
-  if (loading) return <PageLoader />;
-  return user ? children : <Navigate to="/login" replace />;
+  const { user, loading, token } = useAuth();
+  
+  if (loading) {
+    return <PageLoader />;
+  }
+  
+  // Check both user object and token for authentication
+  if (!user || !token) {
+    console.log('User not authenticated, redirecting to landing page');
+    return <Navigate to="/" replace />;
+  }
+  
+  return children;
 };
 
 const Guest = ({ children }) => {
-  const { user, loading } = useAuth();
-  if (loading) return <PageLoader />;
-  return !user ? children : <Navigate to="/dashboard" replace />;
+  const { user, loading, token } = useAuth();
+  
+  if (loading) {
+    return <PageLoader />;
+  }
+  
+  // If user is logged in, redirect to dashboard
+  if (user && token) {
+    console.log('User already logged in, redirecting to dashboard');
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return children;
 };
 
 const PageLoader = () => (
-  <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+  <div className="min-h-screen bg-gradient-to-br from-[#0a0a0a] via-[#1a1a2e] to-[#16213e] flex items-center justify-center">
     <div className="flex flex-col items-center gap-4">
-      <div className="w-12 h-12 rounded-full border-2 border-electric-500/20 border-t-electric-500 animate-spin" />
+      <div className="w-12 h-12 rounded-full border-2 border-cyan-500/20 border-t-cyan-500 animate-spin" />
       <p className="text-slate-500 font-body text-sm">Loading InterviewAI…</p>
     </div>
   </div>
@@ -35,17 +55,31 @@ const PageLoader = () => (
 export default function App() {
   return (
     <Routes>
+      {/* Public Routes - Only accessible when NOT logged in */}
       <Route path="/" element={<Guest><Landing /></Guest>} />
       <Route path="/login" element={<Guest><Login /></Guest>} />
       <Route path="/register" element={<Guest><Register /></Guest>} />
+      
+      {/* Result Route - Protected but without Layout */}
+      <Route 
+        path="/interview/:id/result" 
+        element={
+          <Protected>
+            <SessionResult />
+          </Protected>
+        } 
+      />
+      
+      {/* Protected Routes - Require authentication */}
       <Route element={<Protected><Layout /></Protected>}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/interview/new" element={<NewInterview />} />
         <Route path="/interview/:id" element={<InterviewSession />} />
-        <Route path="/interview/:id/result" element={<SessionResult />} />
         <Route path="/history" element={<History />} />
-        <Route path="/daily-challenge" element={<Protected><DailyChallenge /></Protected>} />
+        <Route path="/daily-challenge" element={<DailyChallenge />} />
       </Route>
+      
+      {/* 404 - Redirect to landing page */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
@@ -30,32 +30,61 @@ export default function Dashboard() {
   const [error, setError] = useState(null);
   const [pointsEnabled, setPointsEnabled] = useState(true);
   const [pointsStats, setPointsStats] = useState(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  
+  // Refs to prevent infinite loops
+  const isMounted = useRef(true);
+  const refreshTimeout = useRef(null);
+  const isLoadingPoints = useRef(false);
+  const lastRefreshTime = useRef(0);
+  const eventListenerAdded = useRef(false);
 
-  const loadPointsStats = useCallback(async () => {
+  const loadPointsStats = useCallback(async (silent = false) => {
+    // Prevent concurrent calls
+    if (isLoadingPoints.current) {
+      console.log('Points stats already loading, skipping...');
+      return null;
+    }
+    
+    // Rate limit to once per second
+    const now = Date.now();
+    if (now - lastRefreshTime.current < 1000) {
+      console.log('Rate limiting points refresh');
+      return null;
+    }
+    
+    isLoadingPoints.current = true;
+    lastRefreshTime.current = now;
+    
     try {
-      console.log('🔄 Loading points stats...');
+      if (!silent) console.log('🔄 Loading points stats...');
       const pointsRes = await api.get('/points/my-stats');
-      console.log('Points stats response:', pointsRes.data);
-      setPointsStats(pointsRes.data);
-      setPointsEnabled(true);
-      return pointsRes.data;
+      
+      if (isMounted.current) {
+        if (!silent) console.log('Points stats response:', pointsRes.data);
+        setPointsStats(pointsRes.data);
+        setPointsEnabled(true);
+        return pointsRes.data;
+      }
     } catch (pointsErr) {
       console.log('Points system not available:', pointsErr.response?.status);
-      if (pointsErr.response?.status === 404 || pointsErr.response?.status === 503) {
-        setPointsEnabled(false);
-      } else {
-        setPointsEnabled(true);
-        setPointsStats({
-          total_points: 0,
-          current_streak: 0,
-          longest_streak: 0,
-          rank: "Unranked",
-          points_to_next_milestone: 50,
-          next_streak_milestone: 5
-        });
+      if (isMounted.current) {
+        if (pointsErr.response?.status === 404 || pointsErr.response?.status === 503) {
+          setPointsEnabled(false);
+        } else {
+          setPointsEnabled(true);
+          setPointsStats({
+            total_points: 0,
+            current_streak: 0,
+            longest_streak: 0,
+            rank: "Unranked",
+            points_to_next_milestone: 50,
+            next_streak_milestone: 5
+          });
+        }
       }
       return null;
+    } finally {
+      isLoadingPoints.current = false;
     }
   }, []);
 
@@ -82,7 +111,7 @@ export default function Dashboard() {
         total_questions_answered: totalQuestions
       });
       
-      await loadPointsStats();
+      await loadPointsStats(true); // Silent load on initial
       
     } catch (err) {
       console.error('Dashboard load error:', err);
@@ -96,28 +125,74 @@ export default function Dashboard() {
   const refreshPoints = useCallback(async () => {
     console.log('🔄 Refreshing points stats...');
     const newStats = await loadPointsStats();
-    setRefreshKey(prev => prev + 1);
-    window.dispatchEvent(new CustomEvent('pointsUpdated'));
+    
+    // Dispatch event for child components, but only if points actually changed
+    if (newStats && isMounted.current) {
+      // Only dispatch if points or streak changed
+      const oldTotal = pointsStats?.total_points;
+      const newTotal = newStats?.total_points;
+      
+      if (oldTotal !== newTotal) {
+        console.log('Points changed, dispatching update event');
+        window.dispatchEvent(new CustomEvent('points-updated'));
+      } else {
+        console.log('Points unchanged, skipping event dispatch');
+      }
+    }
+    
     return newStats;
-  }, [loadPointsStats]);
+  }, [loadPointsStats, pointsStats?.total_points]);
 
-  useEffect(() => { 
-    load(); 
-  }, [load]);
-
-  useEffect(() => {
-    const handlePointsUpdate = () => {
-      console.log('📡 Points update event received, refreshing...');
+  // Debounced refresh to prevent multiple rapid calls
+  const debouncedRefreshPoints = useCallback(() => {
+    if (refreshTimeout.current) {
+      clearTimeout(refreshTimeout.current);
+    }
+    refreshTimeout.current = setTimeout(() => {
       refreshPoints();
-    };
-    
-    window.addEventListener('pointsUpdated', handlePointsUpdate);
-    
-    return () => {
-      window.removeEventListener('pointsUpdated', handlePointsUpdate);
-    };
+    }, 500);
   }, [refreshPoints]);
 
+  // Handle points update events from other components
+  const handlePointsUpdate = useCallback(() => {
+    console.log('📡 Points update event received, refreshing...');
+    debouncedRefreshPoints();
+  }, [debouncedRefreshPoints]);
+
+  useEffect(() => {
+    isMounted.current = true;
+    load();
+    
+    return () => {
+      isMounted.current = false;
+      if (refreshTimeout.current) {
+        clearTimeout(refreshTimeout.current);
+      }
+    };
+  }, [load]);
+
+  // Add event listener only once
+  useEffect(() => {
+    if (!eventListenerAdded.current) {
+      window.addEventListener('points-updated', handlePointsUpdate);
+      eventListenerAdded.current = true;
+      console.log('Points update event listener added');
+    }
+    
+    return () => {
+      if (eventListenerAdded.current) {
+        window.removeEventListener('points-updated', handlePointsUpdate);
+        eventListenerAdded.current = false;
+      }
+      if (refreshTimeout.current) {
+        clearTimeout(refreshTimeout.current);
+      }
+    };
+  }, [handlePointsUpdate]);
+
+  // Remove the automatic interval that was causing continuous refreshing
+  // Comment out or remove this useEffect:
+  /*
   useEffect(() => {
     const interval = setInterval(() => {
       refreshPoints();
@@ -125,6 +200,7 @@ export default function Dashboard() {
     
     return () => clearInterval(interval);
   }, [refreshPoints]);
+  */
 
   const recentSessions = sessions.slice(0, 5);
   
@@ -439,9 +515,9 @@ export default function Dashboard() {
 
           {/* Right Column - Gamification */}
           <div className="space-y-5">
-            <StreakCard key={`streak-${refreshKey}`} onRefresh={refreshPoints} />
-            <DailyChallengeCard key={`daily-${refreshKey}`} onPointsUpdate={refreshPoints} />
-            <Leaderboard key={`leaderboard-${refreshKey}`} onRefresh={refreshPoints} />
+            <StreakCard onRefresh={refreshPoints} />
+            <DailyChallengeCard onPointsUpdate={refreshPoints} />
+            <Leaderboard onRefresh={refreshPoints} />
 
             {/* Score Trend */}
             {scoreHistory.length > 0 && (

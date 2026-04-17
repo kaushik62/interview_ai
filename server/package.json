@@ -11,15 +11,16 @@
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
     "bcryptjs": "^3.0.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.18.2",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
     "express-rate-limit": "^7.1.5",
+    "groq-sdk": "^1.1.2",
     "helmet": "^7.1.0",
-    "jsonwebtoken": "^9.0.2",
+    "jsonwebtoken": "^9.0.3",
     "mammoth": "^1.12.0",
     "multer": "^2.1.1",
-    "mysql2": "^3.9.1",
+    "mysql2": "^3.22.1",
     "pdf-parse": "^1.1.1",
     "uuid": "^9.0.1"
   }
