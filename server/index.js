@@ -5,6 +5,7 @@ import { initDB, testConnection } from './db.js';
 import authRoutes from './routes/auth.js';
 import pointsRoutes from './routes/points.js';
 import mcqRoutes from './routes/mcq.js';  // Add this line
+import statsRoute from './routes/stats.js';  // Add this line
 
 dotenv.config();
 
@@ -18,7 +19,8 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/points', pointsRoutes);
-app.use('/api/mcq', mcqRoutes);  // Add this line
+app.use('/api/mcq', mcqRoutes);
+app.use('/api/stats', statsRoute);
 
 // Health check
 app.get('/api/health', (req, res) => {

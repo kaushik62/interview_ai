@@ -143,7 +143,7 @@ export default function History() {
           </div>
 
           <select
-            className="px-4 py-2.5 bg-white/[0.06] border border-white/[0.08] rounded-lg text-white focus:outline-none focus:border-cyan-500 transition-all"
+            className="px-4 py-2.5 bg-black border border-white/[0.08] rounded-lg text-white focus:outline-none focus:border-cyan-500 transition-all"
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
           >

@@ -97,7 +97,7 @@ const NewInterview = () => {
       
       const generateResponse = await api.post('/mcq/generate', {
         jobRole: formData.jobRole,
-        topic: formData.topic || 'general knowledge',
+        topic: formData.topic,
         count: formData.questionCount
       });
       
@@ -244,7 +244,7 @@ const NewInterview = () => {
             <select
               value={formData.questionCount}
               onChange={(e) => setFormData({...formData, questionCount: parseInt(e.target.value)})}
-              className="w-full px-4 py-3 bg-white/[0.06] border border-white/[0.08] rounded-lg text-white focus:outline-none focus:border-cyan-500"
+              className="w-full px-4 py-3 bg-white border border-white/[0.08] rounded-lg text-black focus:outline-none focus:border-cyan-500"
             >
               <option value={3}>3 Questions</option>
               <option value={5}>5 Questions</option>
