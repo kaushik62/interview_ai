@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
-  LayoutDashboard, Mic, History, LogOut, Brain, ChevronRight, Sparkles
+  LayoutDashboard, Mic, History, LogOut, Brain, ChevronRight, Sparkles, Trophy
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -9,6 +9,7 @@ const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/interview/new', icon: Mic, label: 'New Interview' },
   { to: '/history', icon: History, label: 'History' },
+  { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },  // ← ADD THIS
 ];
 
 export default function Layout() {

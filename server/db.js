@@ -1,18 +1,18 @@
-import mysql from 'mysql2/promise';
-import dotenv from 'dotenv';
+import mysql from "mysql2/promise";
+import dotenv from "dotenv";
 
 dotenv.config();
 
 const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
+  host: process.env.DB_HOST || "localhost",
   port: parseInt(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'interview_coach',
+  user: process.env.DB_USER || "root",
+  password: process.env.DB_PASSWORD || "",
+  database: process.env.DB_NAME || "interview_coach",
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  timezone: '+05:30',
+  timezone: "+05:30",
 };
 
 // Create pool without database first for initial connection
@@ -29,13 +29,13 @@ const getInitialConnection = async () => {
 const ensureDatabase = async () => {
   const databaseName = dbConfig.database;
   let connection;
-  
+
   try {
     connection = await getInitialConnection();
     await connection.query(`CREATE DATABASE IF NOT EXISTS \`${databaseName}\``);
     console.log(`✅ Database '${databaseName}' ensured`);
   } catch (error) {
-    console.error('❌ Error creating database:', error.message);
+    console.error("❌ Error creating database:", error.message);
     throw error;
   } finally {
     if (connection) await connection.end();
@@ -47,7 +47,7 @@ let pool = null;
 
 const createPool = async () => {
   await ensureDatabase();
-  
+
   pool = mysql.createPool(dbConfig);
   return pool;
 };
@@ -60,11 +60,11 @@ export const testConnection = async () => {
   try {
     if (!pool) await createPool();
     const connection = await pool.getConnection();
-    console.log('✅ Database connected successfully');
+    console.log("✅ Database connected successfully");
     connection.release();
     return true;
   } catch (error) {
-    console.error('❌ Database connection failed:', error.message);
+    console.error("❌ Database connection failed:", error.message);
     return false;
   }
 };
@@ -170,21 +170,6 @@ export const initDB = async () => {
       )
     `);
 
-    // User resumes table
-    await conn.query(`
-      CREATE TABLE IF NOT EXISTS user_resumes (
-        id VARCHAR(36) PRIMARY KEY,
-        user_id VARCHAR(36) NOT NULL,
-        file_name VARCHAR(255) NOT NULL,
-        file_path VARCHAR(500) NOT NULL,
-        resume_text LONGTEXT,
-        analysis JSON,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        INDEX idx_user_id (user_id)
-      )
-    `);
-
     // MCQ Questions table
     await conn.query(`
       CREATE TABLE IF NOT EXISTS mcq_questions (
@@ -266,39 +251,39 @@ export const initDB = async () => {
     `);
 
     // Leaderboard cache table
+
     await conn.query(`
-      CREATE TABLE IF NOT EXISTS leaderboard_cache (
-        id VARCHAR(36) PRIMARY KEY,
-        user_id VARCHAR(36) NOT NULL,
-        user_name VARCHAR(100),
-        total_points INT DEFAULT 0,
-        current_streak INT DEFAULT 0,
-        longest_streak INT DEFAULT 0,
-        \`rank\` INT DEFAULT 0,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        INDEX idx_rank (\`rank\`),
-        INDEX idx_points (total_points)
-      )
-    `);
+  CREATE TABLE IF NOT EXISTS leaderboard_cache (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL UNIQUE,  -- One entry per user
+    user_name VARCHAR(100),
+    total_points INT DEFAULT 0,
+    current_streak INT DEFAULT 0,
+    longest_streak INT DEFAULT 0,
+    \`rank\` INT DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_rank (\`rank\`),
+    INDEX idx_points (total_points)
+  )
+`);
 
-    console.log('✅ Database tables initialized successfully');
-    console.log('   - users');
-    console.log('   - interview_sessions');
-    console.log('   - interview_qa');
-    console.log('   - user_stats');
-    console.log('   - mcq_sessions');
-    console.log('   - mcq_questions');
-    console.log('   - user_resumes');
-    console.log('   - user_points');
-    console.log('   - points_history');
-    console.log('   - daily_challenges');
-    console.log('   - user_challenge_completions');
-    console.log('   - leaderboard_cache');
-
+    console.log("✅ Database tables initialized successfully");
+    console.log("   - users");
+    console.log("   - interview_sessions");
+    console.log("   - interview_qa");
+    console.log("   - user_stats");
+    console.log("   - mcq_sessions");
+    console.log("   - mcq_questions");
+    console.log("   - user_resumes");
+    console.log("   - user_points");
+    console.log("   - points_history");
+    console.log("   - daily_challenges");
+    console.log("   - user_challenge_completions");
+    console.log("   - leaderboard_cache");
   } catch (error) {
-    console.error('❌ Database initialization error:', error.message);
-    console.error('Error details:', error);
+    console.error("❌ Database initialization error:", error.message);
+    console.error("Error details:", error);
     throw error;
   } finally {
     conn.release();
@@ -312,9 +297,9 @@ export const query = async (sql, params = []) => {
     const [rows] = await pool.execute(sql, params);
     return rows;
   } catch (error) {
-    console.error('Query error:', error.message);
-    console.error('SQL:', sql);
-    console.error('Params:', params);
+    console.error("Query error:", error.message);
+    console.error("SQL:", sql);
+    console.error("Params:", params);
     throw error;
   }
 };

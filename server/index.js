@@ -4,8 +4,10 @@ import dotenv from 'dotenv';
 import { initDB, testConnection } from './db.js';
 import authRoutes from './routes/auth.js';
 import pointsRoutes from './routes/points.js';
-import mcqRoutes from './routes/mcq.js';  // Add this line
-import statsRoute from './routes/stats.js';  // Add this line
+import mcqRoutes from './routes/mcq.js';
+import statsRoute from './routes/stats.js';
+import leaderboardRoutes from './routes/leaderboard.js';
+import { startAutoRefresh } from './services/leaderboardService.js';
 
 dotenv.config();
 
@@ -21,6 +23,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/points', pointsRoutes);
 app.use('/api/mcq', mcqRoutes);
 app.use('/api/stats', statsRoute);
+app.use('/api/leaderboard', leaderboardRoutes);
+
+// Start auto-refresh for leaderboard cache
+startAutoRefresh(5); // Refreshes every 5 minutes
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -47,6 +53,8 @@ const startServer = async () => {
       console.log(`   - GET    /api/points/leaderboard`);
       console.log(`   - GET    /api/points/daily-challenge`);
       console.log(`   - POST   /api/points/daily-challenge/submit`);
+      console.log(`   - GET    /api/leaderboard`);  // ← ADD THIS
+      console.log(`   - GET    /api/leaderboard/me`);  // ← ADD THIS
     });
   } catch (error) {
     console.error('Failed to start server:', error);

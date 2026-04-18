@@ -10,6 +10,7 @@ import SessionResult from './pages/SessionResult';
 import History from './pages/History';
 import Layout from './components/Layout';
 import DailyChallenge from './pages/DailyChallenge';
+import Leaderboard from './pages/Leaderboard';
 
 const Protected = ({ children }) => {
   const { user, loading, token } = useAuth();
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="/interview/:id" element={<InterviewSession />} />
         <Route path="/history" element={<History />} />
         <Route path="/daily-challenge" element={<DailyChallenge />} />
+        <Route path="/leaderboard" element={<Leaderboard />} />
       </Route>
       
       {/* 404 - Redirect to landing page */}
