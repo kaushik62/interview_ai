@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Trophy, Medal, TrendingUp, Calendar, Flame, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import api from "../utils/api";
+import { Trophy, Medal, Flame, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import api from '../utils/api';
 
 export default function Leaderboard() {
   const { token } = useAuth();
@@ -14,6 +14,7 @@ export default function Leaderboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showSearch, setShowSearch] = useState(false);
+  const [error, setError] = useState(null);
 
   const limit = 20;
 
@@ -21,40 +22,37 @@ export default function Leaderboard() {
   const fetchLeaderboard = async (page = 1) => {
     try {
       setLoading(true);
-      const response = await api.get(`/leaderboard?page=${page}&limit=${limit}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      const data = await response.json();
+      setError(null);
+      const response = await api.get(`/leaderboard?page=${page}&limit=${limit}`);
+      const data = response.data;
+      
+      console.log('API Response:', data);
       
       if (data.success) {
-        setLeaderboard(data.leaderboard);
-        setTop3(data.top3);
-        setUserStats(data.userStats);
-        setTotalPages(data.pagination.totalPages);
+        // Handle leaderboard - ensure it's an array
+        let leaderboardData = data.leaderboard;
+        if (!Array.isArray(leaderboardData)) {
+          leaderboardData = leaderboardData ? [leaderboardData] : [];
+        }
+        
+        // Handle top3 - ensure it's an array
+        let top3Data = data.top3;
+        if (!Array.isArray(top3Data)) {
+          top3Data = top3Data ? [top3Data] : [];
+        }
+        
+        setLeaderboard(leaderboardData);
+        setTop3(top3Data);
+        setUserStats(data.userStats || null);
+        setTotalPages(data.pagination?.totalPages || 1);
+      } else {
+        setError(data.error || 'Failed to fetch leaderboard');
       }
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
+      setError(error.response?.data?.error || 'Failed to load leaderboard');
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Fetch user rank
-  const fetchUserRank = async () => {
-    try {
-      const response = await api.get('/leaderboard/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      const data = await response.json();
-      if (data.success) {
-        setUserStats(data);
-      }
-    } catch (error) {
-      console.error('Error fetching user rank:', error);
     }
   };
 
@@ -62,23 +60,30 @@ export default function Leaderboard() {
   const handleSearch = async () => {
     if (!searchTerm.trim()) {
       setShowSearch(false);
+      setSearchResults([]);
+      fetchLeaderboard(currentPage);
       return;
     }
     
     try {
       setLoading(true);
-      const response = await api.get(`/leaderboard/search?name=${searchTerm}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      const data = await response.json();
+      setError(null);
+      const response = await api.get(`/leaderboard/search?name=${searchTerm}`);
+      const data = response.data;
+      
       if (data.success) {
-        setSearchResults(data.users);
+        let users = data.users;
+        if (!Array.isArray(users)) {
+          users = users ? [users] : [];
+        }
+        setSearchResults(users);
         setShowSearch(true);
+      } else {
+        setError(data.error || 'Search failed');
       }
     } catch (error) {
       console.error('Error searching:', error);
+      setError(error.response?.data?.error || 'Search failed');
     } finally {
       setLoading(false);
     }
@@ -86,10 +91,9 @@ export default function Leaderboard() {
 
   useEffect(() => {
     fetchLeaderboard(currentPage);
-    fetchUserRank();
   }, [currentPage]);
 
-  // Get rank badge color
+  // Get rank color
   const getRankColor = (rank) => {
     switch(rank) {
       case 1: return 'text-yellow-400';
@@ -109,6 +113,9 @@ export default function Leaderboard() {
     }
   };
 
+  // Display data (search results or leaderboard)
+  const displayData = showSearch ? searchResults : leaderboard;
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Header */}
@@ -120,8 +127,21 @@ export default function Leaderboard() {
         <p className="text-slate-400">Top performers who are crushing their interview prep</p>
       </div>
 
+      {/* Error State */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-6">
+          <p className="text-red-400">{error}</p>
+          <button 
+            onClick={() => fetchLeaderboard(currentPage)}
+            className="mt-2 text-sm text-electric-400 hover:text-electric-300"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
       {/* User Stats Card */}
-      {userStats && userStats.rank !== "Unranked" && (
+      {userStats && userStats.rank && userStats.rank !== "Unranked" && (
         <div className="bg-gradient-to-r from-electric-500/10 to-plasma-500/10 rounded-xl p-6 mb-8 border border-white/[0.06]">
           <div className="flex flex-wrap justify-between items-center gap-4">
             <div>
@@ -130,18 +150,18 @@ export default function Leaderboard() {
             </div>
             <div>
               <p className="text-slate-400 text-sm mb-1">Total Points</p>
-              <p className="text-2xl font-bold text-electric-400">{userStats.total_points}</p>
+              <p className="text-2xl font-bold text-electric-400">{userStats.total_points || 0}</p>
             </div>
             <div>
               <p className="text-slate-400 text-sm mb-1">Current Streak</p>
               <p className="text-2xl font-bold text-orange-400 flex items-center gap-2">
                 <Flame className="w-5 h-5" />
-                {userStats.current_streak} days
+                {userStats.current_streak || 0} days
               </p>
             </div>
             <div>
               <p className="text-slate-400 text-sm mb-1">Longest Streak</p>
-              <p className="text-2xl font-bold text-white">{userStats.longest_streak} days</p>
+              <p className="text-2xl font-bold text-white">{userStats.longest_streak || 0} days</p>
             </div>
           </div>
         </div>
@@ -156,7 +176,7 @@ export default function Leaderboard() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {top3.map((user, index) => (
-              <div key={index} className={`bg-gradient-to-br ${index === 0 ? 'from-yellow-500/20 to-yellow-600/10' : index === 1 ? 'from-gray-400/20 to-gray-500/10' : 'from-amber-600/20 to-amber-700/10'} rounded-xl p-6 text-center border border-white/[0.06]`}>
+              <div key={user.user_id || index} className={`bg-gradient-to-br ${index === 0 ? 'from-yellow-500/20 to-yellow-600/10' : index === 1 ? 'from-gray-400/20 to-gray-500/10' : 'from-amber-600/20 to-amber-700/10'} rounded-xl p-6 text-center border border-white/[0.06]`}>
                 <div className="flex justify-center mb-3">
                   {index === 0 ? (
                     <Trophy className="w-12 h-12 text-yellow-400" />
@@ -205,6 +225,7 @@ export default function Leaderboard() {
                 setShowSearch(false);
                 setSearchTerm('');
                 setSearchResults([]);
+                fetchLeaderboard(currentPage);
               }}
               className="px-6 py-2 bg-ink-700 text-slate-300 rounded-xl hover:bg-ink-600 transition"
             >
@@ -228,33 +249,39 @@ export default function Leaderboard() {
               </tr>
             </thead>
             <tbody>
-              {(showSearch ? searchResults : leaderboard).map((user) => (
-                <tr key={user.user_id} className="border-b border-white/[0.06] hover:bg-white/[0.02] transition">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      {getRankIcon(user.rank)}
-                      <span className={`font-bold ${getRankColor(user.rank)}`}>#{user.rank}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div>
-                      <p className="text-white font-medium">{user.user_name}</p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="text-electric-400 font-bold">{user.total_points}</span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="text-orange-400 flex items-center justify-end gap-1">
-                      <Flame className="w-3 h-3" />
-                      {user.current_streak}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="text-white">{user.longest_streak}</span>
+              {displayData.length > 0 ? (
+                displayData.map((user) => (
+                  <tr key={user.user_id || user.id} className="border-b border-white/[0.06] hover:bg-white/[0.02] transition">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        {getRankIcon(user.rank)}
+                        <span className={`font-bold ${getRankColor(user.rank)}`}>#{user.rank}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-white font-medium">{user.user_name || user.name}</p>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <span className="text-electric-400 font-bold">{user.total_points || 0}</span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <span className="text-orange-400 flex items-center justify-end gap-1">
+                        <Flame className="w-3 h-3" />
+                        {user.current_streak || 0}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <span className="text-white">{user.longest_streak || 0}</span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="5" className="px-6 py-12 text-center text-slate-400">
+                    No users found
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -294,11 +321,20 @@ export default function Leaderboard() {
       )}
 
       {/* Empty State */}
-      {!loading && leaderboard.length === 0 && (
+      {!loading && !error && displayData.length === 0 && !showSearch && (
         <div className="text-center py-12 bg-ink-900/50 rounded-xl border border-white/[0.06]">
           <Trophy className="w-16 h-16 text-slate-600 mx-auto mb-4" />
           <p className="text-slate-400">No users on leaderboard yet</p>
           <p className="text-slate-500 text-sm mt-2">Complete challenges to earn points!</p>
+        </div>
+      )}
+
+      {/* Search Empty State */}
+      {!loading && showSearch && displayData.length === 0 && (
+        <div className="text-center py-12 bg-ink-900/50 rounded-xl border border-white/[0.06]">
+          <Search className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+          <p className="text-slate-400">No users found</p>
+          <p className="text-slate-500 text-sm mt-2">Try a different name</p>
         </div>
       )}
     </div>

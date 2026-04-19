@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
-  LayoutDashboard, Mic, History, LogOut, Brain, ChevronRight, Sparkles, Trophy
+  LayoutDashboard, Mic, History, LogOut, Brain, ChevronRight, Trophy
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -9,7 +9,7 @@ const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/interview/new', icon: Mic, label: 'New Interview' },
   { to: '/history', icon: History, label: 'History' },
-  { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },  // ← ADD THIS
+  { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
 ];
 
 export default function Layout() {
@@ -23,14 +23,14 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-ink-950 flex">
-      {/* Sidebar */}
+    <div className="h-screen overflow-hidden bg-ink-950 flex">
+      {/* Sidebar - Full height, no scroll */}
       <aside
         className={`flex flex-col border-r border-white/[0.06] bg-ink-900/80 backdrop-blur-sm
-                   transition-all duration-300 ${collapsed ? 'w-16' : 'w-60'} shrink-0`}
+                   transition-all duration-300 ${collapsed ? 'w-16' : 'w-60'} shrink-0 h-full overflow-y-auto`}
       >
-        {/* Logo */}
-        <div className={`flex items-center gap-3 px-4 py-5 border-b border-white/[0.06] ${collapsed ? 'justify-center' : ''}`}>
+        {/* Logo - Sticky at top */}
+        <div className={`sticky top-0 bg-ink-900/80 backdrop-blur-sm z-10 flex items-center gap-3 px-4 py-5 border-b border-white/[0.06] ${collapsed ? 'justify-center' : ''}`}>
           <div className="w-8 h-8 rounded-lg bg-electric-500/20 border border-electric-500/30 flex items-center justify-center shrink-0">
             <Brain className="w-4 h-4 text-electric-400" />
           </div>
@@ -41,8 +41,8 @@ export default function Layout() {
           )}
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        {/* Nav - Scrollable if needed */}
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {navItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
@@ -65,8 +65,8 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* User / Collapse */}
-        <div className="border-t border-white/[0.06] p-3 space-y-2">
+        {/* User / Collapse - Sticky at bottom */}
+        <div className="sticky bottom-0 bg-ink-900/80 backdrop-blur-sm border-t border-white/[0.06] p-3 space-y-2">
           {!collapsed && (
             <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03]">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-electric-500 to-plasma-500 flex items-center justify-center shrink-0">
@@ -100,8 +100,8 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* Main */}
-      <main className="flex-1 overflow-auto">
+      {/* Main Content - Scrollable */}
+      <main className="flex-1 overflow-y-auto h-full">
         <Outlet />
       </main>
     </div>

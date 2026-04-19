@@ -3,7 +3,8 @@ import { authenticate } from '../middleware/auth.js';
 import { 
   getLeaderboard, 
   getUserRank, 
-  getTopUsers 
+  getTopUsers,
+  refreshLeaderboardCache
 } from '../services/leaderboardService.js';
 import { query } from '../db.js';
 
@@ -16,8 +17,13 @@ router.get('/', authenticate, async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     
+    console.log('Fetching leaderboard for user:', userId);
+    
     // Get leaderboard with pagination
     const { leaderboard, pagination } = await getLeaderboard(page, limit);
+    
+    console.log('Leaderboard length:', leaderboard.length);
+    console.log('Leaderboard data:', JSON.stringify(leaderboard, null, 2));
     
     // Get current user's rank
     const userStats = await getUserRank(userId);
@@ -28,16 +34,17 @@ router.get('/', authenticate, async (req, res) => {
     // Get nearby users (2 above, 2 below)
     let nearbyUsers = [];
     if (userStats && userStats.rank) {
-      nearbyUsers = await query(
+      const nearbyResult = await query(
         `SELECT 
            user_name,
            total_points,
-           rank
+           \`rank\`
          FROM leaderboard_cache
-         WHERE rank BETWEEN ? AND ?
-         ORDER BY rank ASC`,
+         WHERE \`rank\` BETWEEN ? AND ?
+         ORDER BY \`rank\` ASC`,
         [userStats.rank - 2, userStats.rank + 2]
       );
+      nearbyUsers = nearbyResult[0] || [];
     }
     
     res.json({
@@ -54,8 +61,22 @@ router.get('/', authenticate, async (req, res) => {
     console.error('Error in leaderboard:', error);
     res.status(500).json({ 
       success: false, 
-      error: error.message 
+      error: error.message
     });
+  }
+});
+
+// POST /api/leaderboard/refresh - Force refresh cache
+router.post('/refresh', authenticate, async (req, res) => {
+  try {
+    await refreshLeaderboardCache();
+    res.json({ 
+      success: true, 
+      message: 'Leaderboard refreshed successfully' 
+    });
+  } catch (error) {
+    console.error('Error refreshing leaderboard:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -80,44 +101,27 @@ router.get('/top/:limit', authenticate, async (req, res) => {
 router.get('/search', authenticate, async (req, res) => {
   try {
     const searchTerm = req.query.name || '';
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
     
-    // Search users
-    const users = await query(
+    const result = await query(
       `SELECT 
          user_id,
          user_name,
          total_points,
          current_streak,
          longest_streak,
-         rank
+         \`rank\`
        FROM leaderboard_cache
        WHERE user_name LIKE ?
-       ORDER BY rank ASC
-       LIMIT ? OFFSET ?`,
-      [`%${searchTerm}%`, limit, offset]
-    );
-    
-    // Get total count for search
-    const totalResult = await query(
-      `SELECT COUNT(*) as total 
-       FROM leaderboard_cache 
-       WHERE user_name LIKE ?`,
+       ORDER BY \`rank\` ASC
+       LIMIT 20`,
       [`%${searchTerm}%`]
     );
     
+    const users = result[0] || [];
+    
     res.json({
       success: true,
-      users: users,
-      pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(totalResult[0].total / limit),
-        totalUsers: totalResult[0].total,
-        hasNext: page < Math.ceil(totalResult[0].total / limit),
-        hasPrev: page > 1
-      }
+      users: users
     });
     
   } catch (error) {
@@ -142,15 +146,17 @@ router.get('/me', authenticate, async (req, res) => {
     }
     
     // Get users ahead and behind
-    const usersAhead = await query(
-      `SELECT COUNT(*) as count FROM leaderboard_cache WHERE rank < ?`,
+    const aheadResult = await query(
+      `SELECT COUNT(*) as count FROM leaderboard_cache WHERE \`rank\` < ?`,
+      [userStats.rank]
+    );
+    const behindResult = await query(
+      `SELECT COUNT(*) as count FROM leaderboard_cache WHERE \`rank\` > ?`,
       [userStats.rank]
     );
     
-    const usersBehind = await query(
-      `SELECT COUNT(*) as count FROM leaderboard_cache WHERE rank > ?`,
-      [userStats.rank]
-    );
+    const usersAhead = aheadResult[0]?.[0]?.count || aheadResult[0]?.count || 0;
+    const usersBehind = behindResult[0]?.[0]?.count || behindResult[0]?.count || 0;
     
     res.json({
       success: true,
@@ -158,8 +164,8 @@ router.get('/me', authenticate, async (req, res) => {
       total_points: userStats.total_points,
       current_streak: userStats.current_streak,
       longest_streak: userStats.longest_streak,
-      users_ahead: usersAhead[0].count,
-      users_behind: usersBehind[0].count
+      users_ahead: usersAhead,
+      users_behind: usersBehind
     });
     
   } catch (error) {

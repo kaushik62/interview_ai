@@ -19,9 +19,7 @@ const Protected = ({ children }) => {
     return <PageLoader />;
   }
   
-  // Check both user object and token for authentication
   if (!user || !token) {
-    console.log('User not authenticated, redirecting to landing page');
     return <Navigate to="/" replace />;
   }
   
@@ -35,9 +33,7 @@ const Guest = ({ children }) => {
     return <PageLoader />;
   }
   
-  // If user is logged in, redirect to dashboard
   if (user && token) {
-    console.log('User already logged in, redirecting to dashboard');
     return <Navigate to="/dashboard" replace />;
   }
   
@@ -56,12 +52,12 @@ const PageLoader = () => (
 export default function App() {
   return (
     <Routes>
-      {/* Public Routes - Only accessible when NOT logged in */}
+      {/* Public Routes */}
       <Route path="/" element={<Guest><Landing /></Guest>} />
       <Route path="/login" element={<Guest><Login /></Guest>} />
       <Route path="/register" element={<Guest><Register /></Guest>} />
       
-      {/* Result Route - Protected, outside Layout for cleaner display */}
+      {/* Result Route */}
       <Route 
         path="/interview/:id/result" 
         element={
@@ -71,7 +67,7 @@ export default function App() {
         } 
       />
       
-      {/* Protected Routes - Require authentication with Layout */}
+      {/* Protected Routes with Layout */}
       <Route element={<Protected><Layout /></Protected>}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/interview/new" element={<NewInterview />} />
@@ -81,7 +77,7 @@ export default function App() {
         <Route path="/leaderboard" element={<Leaderboard />} />
       </Route>
       
-      {/* 404 - Redirect to landing page */}
+      {/* 404 */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -25,9 +25,6 @@ app.use('/api/mcq', mcqRoutes);
 app.use('/api/stats', statsRoute);
 app.use('/api/leaderboard', leaderboardRoutes);
 
-// Start auto-refresh for leaderboard cache
-startAutoRefresh(5); // Refreshes every 5 minutes
-
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -39,22 +36,33 @@ const startServer = async () => {
     await testConnection();
     await initDB();
     
+    // Start auto-refresh after database is ready
+    startAutoRefresh(5);
+    
     app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`\n🚀 Server running on port ${PORT}`);
       console.log(`📍 http://localhost:${PORT}`);
-      console.log(`📚 API endpoints:`);
+      console.log(`\n📚 API endpoints:`);
+      console.log(`   Auth:`);
       console.log(`   - POST   /api/auth/register`);
       console.log(`   - POST   /api/auth/login`);
       console.log(`   - GET    /api/auth/me`);
+      console.log(`   \nMCQ:`);
       console.log(`   - GET    /api/mcq/sessions`);
       console.log(`   - POST   /api/mcq/sessions`);
       console.log(`   - POST   /api/mcq/generate`);
+      console.log(`   \nPoints:`);
       console.log(`   - GET    /api/points/my-stats`);
       console.log(`   - GET    /api/points/leaderboard`);
       console.log(`   - GET    /api/points/daily-challenge`);
       console.log(`   - POST   /api/points/daily-challenge/submit`);
-      console.log(`   - GET    /api/leaderboard`);  // ← ADD THIS
-      console.log(`   - GET    /api/leaderboard/me`);  // ← ADD THIS
+      console.log(`   \nLeaderboard:`);
+      console.log(`   - GET    /api/leaderboard`);
+      console.log(`   - GET    /api/leaderboard/me`);
+      console.log(`   - GET    /api/leaderboard/top/:limit`);
+      console.log(`   - GET    /api/leaderboard/search`);
+      console.log(`   - POST   /api/leaderboard/refresh`);
+      console.log(`\n✅ Leaderboard auto-refresh every 5 minutes\n`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
