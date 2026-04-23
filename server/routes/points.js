@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth.js';
 import { generateMCQQuestions } from '../services/groq.js';
 import { query, getOne, beginTransaction, commitTransaction, rollbackTransaction } from '../db.js';
 import { v4 as uuidv4 } from 'uuid';
+import { quizLimiter, dailyChallengeLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
@@ -322,7 +323,7 @@ router.get('/daily-challenge', authenticate, async (req, res) => {
 });
 
 // POST /api/points/daily-challenge/submit
-router.post('/daily-challenge/submit', authenticate, async (req, res) => {
+router.post('/daily-challenge/submit', authenticate, quizLimiter, async (req, res) => {
   let connection = null;
   
   try {
@@ -440,7 +441,7 @@ router.post('/daily-challenge/submit', authenticate, async (req, res) => {
 });
 
 // POST /api/points/add-quiz-points
-router.post('/add-quiz-points', authenticate, async (req, res) => {
+router.post('/add-quiz-points', authenticate, quizLimiter, async (req, res) => {
   try {
     const userId = req.user.id;
     const { points, quizType, score, totalQuestions } = req.body;

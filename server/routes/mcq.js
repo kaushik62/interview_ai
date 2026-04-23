@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { authenticate } from '../middleware/auth.js';
 import { query, getOne, beginTransaction, commitTransaction, rollbackTransaction } from '../db.js';
 import { generateMCQQuestions, evaluateAnswers } from '../services/groq.js';
+import { aiLimiter } from '../middleware/rateLimiter.js';
+
 
 const router = express.Router();
 
@@ -65,7 +67,7 @@ router.get('/sessions/:sessionId', authenticate, async (req, res) => {
 });
 
 // POST /api/mcq/generate - Generate new MCQ questions
-router.post('/generate', authenticate, async (req, res) => {
+router.post('/generate', authenticate, aiLimiter, async (req, res) => {
   try {
     const { jobRole, topic, count = 5 } = req.body;
     

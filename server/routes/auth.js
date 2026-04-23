@@ -3,11 +3,12 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { query, getOne } from '../db.js';
 import { generateToken, authenticate } from '../middleware/auth.js';
+import { authLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
 // POST /api/auth/register
-router.post('/register', async (req, res) => {
+router.post('/register', authLimiter, async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
@@ -67,7 +68,7 @@ router.post('/register', async (req, res) => {
 });
 
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
