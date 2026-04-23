@@ -11,10 +11,10 @@ export const generalLimiter = rateLimit({
 });
 
 export const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 5 * 60 * 1000,
   max: 5,
   keyGenerator: (req) => req.ip, // Explicitly use IP address
-  message: { success: false, error: 'Too many login attempts. Try again after 15 minutes.' },
+  message: { success: false, error: 'Too many attempts.' },
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
@@ -29,9 +29,9 @@ export const quizLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-export const aiLimiter = rateLimit({
+export const aiLimiter = rateLimit({ // Quiz Generation
   windowMs: 60 * 60 * 1000,
-  max: 10,
+  max: 3,
   keyGenerator: (req) => req.ip, // Explicitly use IP address
   message: { success: false, error: 'Too many generation requests. Try again later.' },
   standardHeaders: true,

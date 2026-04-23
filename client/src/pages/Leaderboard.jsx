@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Trophy, Medal, Flame, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { Trophy, Medal, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import api from '../utils/api';
 
 export default function Leaderboard() {
@@ -140,7 +140,7 @@ export default function Leaderboard() {
         </div>
       )}
 
-      {/* User Stats Card */}
+      {/* User Stats Card - Removed streak info */}
       {userStats && userStats.rank && userStats.rank !== "Unranked" && (
         <div className="bg-gradient-to-r from-electric-500/10 to-plasma-500/10 rounded-xl p-6 mb-8 border border-white/[0.06]">
           <div className="flex flex-wrap justify-between items-center gap-4">
@@ -152,22 +152,11 @@ export default function Leaderboard() {
               <p className="text-slate-400 text-sm mb-1">Total Points</p>
               <p className="text-2xl font-bold text-electric-400">{userStats.total_points || 0}</p>
             </div>
-            <div>
-              <p className="text-slate-400 text-sm mb-1">Current Streak</p>
-              <p className="text-2xl font-bold text-orange-400 flex items-center gap-2">
-                <Flame className="w-5 h-5" />
-                {userStats.current_streak || 0} days
-              </p>
-            </div>
-            <div>
-              <p className="text-slate-400 text-sm mb-1">Longest Streak</p>
-              <p className="text-2xl font-bold text-white">{userStats.longest_streak || 0} days</p>
-            </div>
           </div>
         </div>
       )}
 
-      {/* Top 3 Podium */}
+      {/* Top 3 Podium - Removed streak info */}
       {top3.length > 0 && (
         <div className="mb-12">
           <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
@@ -189,10 +178,6 @@ export default function Leaderboard() {
                 <p className="text-3xl font-bold text-white mb-1">#{user.rank}</p>
                 <p className="text-white font-semibold mb-2">{user.user_name}</p>
                 <p className="text-2xl font-bold text-electric-400">{user.total_points} pts</p>
-                <p className="text-slate-400 text-sm mt-2 flex items-center justify-center gap-1">
-                  <Flame className="w-3 h-3" />
-                  {user.current_streak} day streak
-                </p>
               </div>
             ))}
           </div>
@@ -235,7 +220,7 @@ export default function Leaderboard() {
         </div>
       </div>
 
-      {/* Leaderboard Table */}
+      {/* Leaderboard Table - Removed streak columns */}
       <div className="bg-ink-900/50 rounded-xl border border-white/[0.06] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -244,8 +229,6 @@ export default function Leaderboard() {
                 <th className="px-6 py-4 text-left text-slate-400 font-medium text-sm">Rank</th>
                 <th className="px-6 py-4 text-left text-slate-400 font-medium text-sm">User</th>
                 <th className="px-6 py-4 text-right text-slate-400 font-medium text-sm">Total Points</th>
-                <th className="px-6 py-4 text-right text-slate-400 font-medium text-sm">Current Streak</th>
-                <th className="px-6 py-4 text-right text-slate-400 font-medium text-sm">Longest Streak</th>
               </tr>
             </thead>
             <tbody>
@@ -264,20 +247,11 @@ export default function Leaderboard() {
                     <td className="px-6 py-4 text-right">
                       <span className="text-electric-400 font-bold">{user.total_points || 0}</span>
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <span className="text-orange-400 flex items-center justify-end gap-1">
-                        <Flame className="w-3 h-3" />
-                        {user.current_streak || 0}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <span className="text-white">{user.longest_streak || 0}</span>
-                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="5" className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan="3" className="px-6 py-12 text-center text-slate-400">
                     No users found
                   </td>
                 </tr>

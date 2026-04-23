@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useRateLimit } from '../utils/useRateLimit';
+import { useRateLimit } from '../hooks/useRateLimit';
 import { Brain, Eye, EyeOff, LogIn } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -11,18 +11,7 @@ export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
-  
-  // Rate limit hook - persists across page refresh
-  const { 
-    isRateLimited, 
-    remainingTime, 
-    formatTime, 
-    handleError,
-    resetRateLimit 
-  } = useRateLimit({ 
-    defaultDuration: 900, // 15 minutes
-    storageKey: 'login_rate_limit'
-  });
+  const { isBlocked, timeLeft, errorMessage, handleRateLimit } = useRateLimit();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -31,14 +20,11 @@ export default function Login() {
     try {
       await login(form.email, form.password);
       toast.success('Welcome back!');
-      resetRateLimit(); // Clear rate limit on successful login
       navigate('/dashboard');
     } catch (err) {
-      // Let the hook handle rate limit errors (429)
-      const isRateLimitedError = handleError(err);
+      const isRateLimited = handleRateLimit(err);
       
-      // If not rate limit error, show normal error
-      if (!isRateLimitedError) {
+      if (!isRateLimited) {
         toast.error(err.response?.data?.error || 'Login failed');
       }
     } finally {
@@ -67,11 +53,10 @@ export default function Login() {
 
         <div className="glass-card p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Rate limit warning message */}
-            {isRateLimited && (
+            {isBlocked && (
               <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
                 <p className="text-red-400 text-sm text-center">
-                  Too many failed attempts. Please wait <span className="font-mono font-bold">{formatTime(remainingTime)}</span> before trying again.
+                  {errorMessage} Try again in {timeLeft}
                 </p>
               </div>
             )}
@@ -85,7 +70,7 @@ export default function Login() {
                 placeholder="you@example.com"
                 value={form.email}
                 onChange={e => setForm({ ...form, email: e.target.value })}
-                disabled={isRateLimited}
+                disabled={isBlocked}
               />
             </div>
 
@@ -99,7 +84,7 @@ export default function Login() {
                   placeholder="Your password"
                   value={form.password}
                   onChange={e => setForm({ ...form, password: e.target.value })}
-                  disabled={isRateLimited}
+                  disabled={isBlocked}
                 />
                 <button
                   type="button"
@@ -113,13 +98,13 @@ export default function Login() {
 
             <button
               type="submit"
-              disabled={loading || isRateLimited}
+              disabled={loading || isBlocked}
               className="btn-electric w-full flex items-center justify-center gap-2 py-3.5 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <span className="w-5 h-5 border-2 border-ink-950/30 border-t-ink-950 rounded-full animate-spin" />
-              ) : isRateLimited ? (
-                `Try again in ${formatTime(remainingTime)}`
+              ) : isBlocked ? (
+                `Try again in ${timeLeft}`
               ) : (
                 <>
                   <LogIn className="w-4 h-4" /> Sign in

@@ -218,10 +218,6 @@ const Leaderboard = ({ onRefresh }) => {
                   <p className="text-white text-sm font-medium">
                     {user.user_name || "Anonymous"}
                   </p>
-                  <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <Flame className="w-3 h-3 text-orange-500" />
-                    <span>{user.current_streak || 0} day streak</span>
-                  </div>
                 </div>
               </div>
               

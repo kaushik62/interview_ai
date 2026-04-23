@@ -426,19 +426,6 @@ export default function Dashboard() {
                     </p>
                   </div>
                 </div>
-                <div className="w-px h-10 bg-white/[0.1] hidden sm:block" />
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-orange-500/20 border border-orange-500/30 flex items-center justify-center">
-                    <Flame className="w-5 h-5 text-orange-400" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-400">Current Streak</p>
-                    <p className="text-2xl font-bold text-white">
-                      {pointsStats.current_streak || 0}{" "}
-                      <span className="text-sm text-slate-400">days</span>
-                    </p>
-                  </div>
-                </div>
               </div>
               {pointsStats.points_to_next_milestone > 0 &&
                 pointsStats.points_to_next_milestone !== 50 && (
