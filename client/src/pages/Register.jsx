@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useRateLimit } from '../utils/useRateLimit';
 import { Brain, Eye, EyeOff, UserPlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -10,20 +11,40 @@ export default function Register() {
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  // Rate limit hook with different storage key
+  const { 
+    isRateLimited, 
+    remainingTime, 
+    formatTime, 
+    handleError,
+    resetRateLimit 
+  } = useRateLimit({ 
+    defaultDuration: 900, // 15 minutes
+    storageKey: 'register_rate_limit'
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
     if (form.password.length < 6) {
       toast.error('Password must be at least 6 characters');
       return;
     }
+    
     setLoading(true);
+    
     try {
       await register(form.name, form.email, form.password);
       toast.success('Account created! Welcome aboard 🎉');
+      resetRateLimit(); // Clear rate limit on success
       navigate('/dashboard');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Registration failed');
+      const isRateLimitedError = handleError(err);
+      
+      if (!isRateLimitedError) {
+        toast.error(err.response?.data?.error || 'Registration failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -50,6 +71,15 @@ export default function Register() {
 
         <div className="glass-card p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Rate limit warning message */}
+            {isRateLimited && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                <p className="text-red-400 text-sm text-center">
+                  Too many registration attempts. Please wait <span className="font-mono font-bold">{formatTime(remainingTime)}</span> before trying again.
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2 font-body">Full name</label>
               <input
@@ -59,6 +89,7 @@ export default function Register() {
                 placeholder="Alex Johnson"
                 value={form.name}
                 onChange={e => setForm({ ...form, name: e.target.value })}
+                disabled={isRateLimited}
               />
             </div>
 
@@ -71,6 +102,7 @@ export default function Register() {
                 placeholder="you@example.com"
                 value={form.email}
                 onChange={e => setForm({ ...form, email: e.target.value })}
+                disabled={isRateLimited}
               />
             </div>
 
@@ -84,11 +116,13 @@ export default function Register() {
                   placeholder="At least 6 characters"
                   value={form.password}
                   onChange={e => setForm({ ...form, password: e.target.value })}
+                  disabled={isRateLimited}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPw(!showPw)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                  disabled={isRateLimited}
                 >
                   {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -106,11 +140,13 @@ export default function Register() {
 
             <button
               type="submit"
-              disabled={loading}
-              className="btn-electric w-full flex items-center justify-center gap-2 py-3.5 mt-2"
+              disabled={loading || isRateLimited}
+              className="btn-electric w-full flex items-center justify-center gap-2 py-3.5 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <span className="w-5 h-5 border-2 border-ink-950/30 border-t-ink-950 rounded-full animate-spin" />
+              ) : isRateLimited ? (
+                `Try again in ${formatTime(remainingTime)}`
               ) : (
                 <>
                   <UserPlus className="w-4 h-4" /> Create account

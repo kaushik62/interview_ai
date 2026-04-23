@@ -42,6 +42,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // FIXED: Login function - throws error instead of returning object
   const login = async (email, password) => {
     try {
       const { data } = await api.post('/auth/login', { email, password });
@@ -55,16 +56,15 @@ export const AuthProvider = ({ children }) => {
       setToken(data.token);
       setUser(data.user);
       
-      return { success: true, data };
+      return data;
     } catch (error) {
       console.error('Login error:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.error || 'Login failed' 
-      };
+      // THROW the error so component can handle it (especially 429 rate limit)
+      throw error;
     }
   };
 
+  // FIXED: Register function - throws error instead of returning object
   const register = async (name, email, password) => {
     try {
       const { data } = await api.post('/auth/register', { name, email, password });
@@ -78,13 +78,11 @@ export const AuthProvider = ({ children }) => {
       setToken(data.token);
       setUser(data.user);
       
-      return { success: true, data };
+      return data;
     } catch (error) {
       console.error('Register error:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.error || 'Registration failed' 
-      };
+      // THROW the error so component can handle it (especially 429 rate limit)
+      throw error;
     }
   };
 
