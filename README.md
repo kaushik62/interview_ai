@@ -1,6 +1,6 @@
 # 🎯 InterviewAI — Full-Stack AI Mock Interview Coach
 
-A full-stack web application powered by **Google Gemini AI**, **React**, **Node/Express**, **MySQL**, and **JWT authentication** to help engineers practice technical and behavioral interviews with real-time AI feedback.
+A full-stack web application powered by **AI**, **React**, **Node/Express**, **MySQL**, and **JWT authentication** to help engineers practice technical and behavioral interviews with real-time AI feedback.
 
 ---
 
@@ -18,7 +18,7 @@ interview-coach/
 │   │   ├── interviews.js    # /api/interviews — CRUD + AI evaluation
 │   │   └── stats.js         # /api/stats — dashboard data
 │   ├── services/
-│   │   └── gemini.js        # Gemini AI: questions, feedback, summary
+│   │   └── AI API Services.js        # Gemini AI: questions, feedback, summary
 │   └── .env.example         # Environment variables template
 │
 └── client/                  # React + Vite + Tailwind frontend
@@ -48,7 +48,6 @@ interview-coach/
 ### 1. Prerequisites
 - **Node.js** v18+
 - **MySQL** 8.0+
-- **Google Gemini API key** — [Get one here](https://aistudio.google.com/app/apikey)
 
 ---
 
@@ -95,8 +94,6 @@ DB_NAME=interview_coach
 JWT_SECRET=your_super_secret_key_min_32_chars
 JWT_EXPIRES_IN=7d
 
-GEMINI_API_KEY=your_gemini_api_key_here
-
 CLIENT_URL=http://localhost:5173
 ```
 
@@ -114,35 +111,7 @@ npm install
 npm run dev
 ```
 
-App will be available at **http://localhost:5173**
-
----
-
-## 🔌 API Reference
-
-### Auth
-| Method | Route | Description |
-|--------|-------|-------------|
-| POST | `/api/auth/register` | Register new user |
-| POST | `/api/auth/login` | Login, returns JWT |
-| GET | `/api/auth/me` | Get current user (protected) |
-| PUT | `/api/auth/profile` | Update profile (protected) |
-
-### Interviews
-| Method | Route | Description |
-|--------|-------|-------------|
-| POST | `/api/interviews` | Create session + generate questions |
-| GET | `/api/interviews` | List user's sessions |
-| GET | `/api/interviews/:id` | Get session with all Q&A |
-| POST | `/api/interviews/:id/answer` | Submit + evaluate answer |
-| POST | `/api/interviews/:id/complete` | Complete + generate summary |
-| POST | `/api/interviews/:id/hint` | Get AI hint for question |
-| DELETE | `/api/interviews/:id` | Delete session |
-
-### Stats
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/api/stats/dashboard` | Dashboard data + score history |
+App will be available at **https://interview-ai-orpin-nu.vercel.app/**
 
 ---
 
@@ -173,11 +142,11 @@ App will be available at **http://localhost:5173**
 | Frontend | React 18, Vite, TailwindCSS |
 | Routing | React Router v6 |
 | HTTP Client | Axios (JWT interceptor) |
-| Animations | Framer Motion |
+| Animations |
 | Backend | Node.js, Express 4 |
 | Database | MySQL 8 + mysql2 |
 | Auth | JWT (jsonwebtoken) + bcryptjs |
-| AI | Google Gemini 1.5 Flash |
+| AI API |
 | Security | Helmet, express-rate-limit, CORS |
 
 ---
@@ -203,7 +172,6 @@ App will be available at **http://localhost:5173**
 | `JWT_SECRET` | ✅ | Secret key (32+ chars) |
 | `GEMINI_API_KEY` | ✅ | Google Gemini API key |
 | `CLIENT_URL` | ✅ | Frontend URL for CORS |
-| `PORT` | ❌ | Server port (default: 5000) |
 
 ---
 
@@ -218,4 +186,4 @@ App will be available at **http://localhost:5173**
 
 ---
 
-*Built with ❤️ using React, Express, MySQL, JWT & Google Gemini*
+*Built with using React, Node, Express, MySQL, JWT, etc...*
