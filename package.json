@@ -9,6 +9,7 @@
     "dev:client": "npm run dev --prefix client",
     "dev": "npm run dev:server & npm run dev:client",
     "build": "npm run build --prefix client",
-    "start": "npm start --prefix server"
+    "start": "npm start --prefix server",
+    "test": "echo \"No tests specified\" && exit 0"
   }
 }
