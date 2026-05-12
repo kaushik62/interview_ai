@@ -10,7 +10,8 @@ const adminConfig = {
   port: parseInt(process.env.DB_PORT) || 5432,
   user: process.env.DB_USER || "postgres",
   password: process.env.DB_PASSWORD || "",
-  database: "postgres", // Connect to default database first
+  database: "postgres",
+  connectionTimeoutMillis: 10000,
 };
 
 // Configuration for actual app (with database name)
@@ -22,17 +23,35 @@ const dbConfig = {
   database: process.env.DB_NAME || "interview_coach",
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000,
 };
 
-// Add SSL for production
-if (process.env.DB_SSL === 'true') {
+// Add SSL for production (ALWAYS enable SSL for cloud databases)
+// Check if we're in production or SSL is explicitly enabled
+const isProduction = process.env.NODE_ENV === 'production';
+const useSSL = process.env.DB_SSL === 'true' || isProduction;
+
+if (useSSL) {
   adminConfig.ssl = { rejectUnauthorized: false };
   dbConfig.ssl = { rejectUnauthorized: false };
+  console.log('🔒 SSL enabled for database connection');
 }
 
-// Function to ensure database exists
+// Function to ensure database exists - FIXED for cloud databases
 const ensureDatabase = async () => {
+  // If using cloud database (Aiven, Supabase, etc.), skip database creation
+  // because you usually can't create databases programmatically
+  const isCloudDB = process.env.DB_HOST?.includes('aivencloud.com') || 
+                    process.env.DB_HOST?.includes('supabase.co') ||
+                    process.env.DB_NAME === 'defaultdb' ||
+                    process.env.NODE_ENV === 'production';
+  
+  if (isCloudDB) {
+    console.log('☁️ Cloud database detected - skipping database creation');
+    console.log(`✅ Using existing database: ${process.env.DB_NAME || 'interview_coach'}`);
+    return true;
+  }
+  
   const client = new Client(adminConfig);
   
   try {
@@ -48,7 +67,6 @@ const ensureDatabase = async () => {
     );
     
     if (res.rows.length === 0) {
-      // Database doesn't exist, create it
       await client.query(`CREATE DATABASE ${databaseName}`);
       console.log(`✅ Database '${databaseName}' created successfully`);
     } else {
@@ -57,9 +75,14 @@ const ensureDatabase = async () => {
     
   } catch (error) {
     console.error('❌ Error ensuring database:', error.message);
-    throw error;
+    // Don't throw error in cloud mode, just log it
+    if (!isCloudDB) {
+      throw error;
+    }
   } finally {
-    await client.end();
+    if (!isCloudDB) {
+      await client.end();
+    }
   }
 };
 
@@ -68,13 +91,16 @@ let pool = null;
 
 const createPool = async () => {
   try {
-    // First, ensure database exists
+    // First, ensure database exists (skip for cloud DBs)
     await ensureDatabase();
     
     // Then create pool with the actual database
     pool = new Pool(dbConfig);
-    await pool.query('SELECT NOW()');
+    
+    // Test connection with timeout
+    const testQuery = await pool.query('SELECT NOW()');
     console.log(`✅ PostgreSQL connected to database '${dbConfig.database}'`);
+    console.log(`📅 Database time: ${testQuery.rows[0].now}`);
     
     pool.on('error', (err) => {
       console.error('Unexpected PostgreSQL error:', err);
@@ -83,6 +109,7 @@ const createPool = async () => {
     return pool;
   } catch (error) {
     console.error("❌ PostgreSQL connection failed:", error.message);
+    console.error("📝 Please check your database credentials and SSL settings");
     throw error;
   }
 };
