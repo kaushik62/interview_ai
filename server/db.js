@@ -4,6 +4,15 @@ import dotenv from 'dotenv';
 const { Client, Pool } = pkg;
 dotenv.config();
 
+// Detect if running in production/cloud environment
+const isProduction = process.env.NODE_ENV === 'production';
+const isCloudDB = process.env.DB_HOST?.includes('aiven.com') || 
+                  process.env.DB_HOST?.includes('console.aiven.io') ||
+                  process.env.DB_HOST?.includes('aiven.io') ||
+                  process.env.DB_HOST?.includes('supabase.com') ||
+                  process.env.DB_HOST?.includes('render.com') ||
+                  process.env.DB_SSL === 'true';
+
 // Configuration for initial connection (without database name)
 const adminConfig = {
   host: process.env.DB_HOST || "localhost",
@@ -26,26 +35,18 @@ const dbConfig = {
   connectionTimeoutMillis: 10000,
 };
 
-// Add SSL for production (ALWAYS enable SSL for cloud databases)
-// Check if we're in production or SSL is explicitly enabled
-const isProduction = process.env.NODE_ENV === 'production';
-const useSSL = process.env.DB_SSL === 'true' || isProduction;
-
-if (useSSL) {
+// ONLY enable SSL for cloud databases (Render, Aiven, Supabase)
+if (isCloudDB) {
   adminConfig.ssl = { rejectUnauthorized: false };
   dbConfig.ssl = { rejectUnauthorized: false };
-  console.log('🔒 SSL enabled for database connection');
+  console.log('🔒 SSL enabled for cloud database connection');
+} else {
+  console.log('🔓 SSL disabled for local development');
 }
 
-// Function to ensure database exists - FIXED for cloud databases
+// Function to ensure database exists
 const ensureDatabase = async () => {
-  // If using cloud database (Aiven, Supabase, etc.), skip database creation
-  // because you usually can't create databases programmatically
-  const isCloudDB = process.env.DB_HOST?.includes('aivencloud.com') || 
-                    process.env.DB_HOST?.includes('supabase.co') ||
-                    process.env.DB_NAME === 'defaultdb' ||
-                    process.env.NODE_ENV === 'production';
-  
+  // Skip database creation for cloud databases
   if (isCloudDB) {
     console.log('☁️ Cloud database detected - skipping database creation');
     console.log(`✅ Using existing database: ${process.env.DB_NAME || 'interview_coach'}`);
@@ -75,14 +76,9 @@ const ensureDatabase = async () => {
     
   } catch (error) {
     console.error('❌ Error ensuring database:', error.message);
-    // Don't throw error in cloud mode, just log it
-    if (!isCloudDB) {
-      throw error;
-    }
+    throw error;
   } finally {
-    if (!isCloudDB) {
-      await client.end();
-    }
+    await client.end();
   }
 };
 
@@ -91,13 +87,13 @@ let pool = null;
 
 const createPool = async () => {
   try {
-    // First, ensure database exists (skip for cloud DBs)
+    // First, ensure database exists
     await ensureDatabase();
     
     // Then create pool with the actual database
     pool = new Pool(dbConfig);
     
-    // Test connection with timeout
+    // Test connection
     const testQuery = await pool.query('SELECT NOW()');
     console.log(`✅ PostgreSQL connected to database '${dbConfig.database}'`);
     console.log(`📅 Database time: ${testQuery.rows[0].now}`);
@@ -109,7 +105,6 @@ const createPool = async () => {
     return pool;
   } catch (error) {
     console.error("❌ PostgreSQL connection failed:", error.message);
-    console.error("📝 Please check your database credentials and SSL settings");
     throw error;
   }
 };
