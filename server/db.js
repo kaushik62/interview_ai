@@ -6,22 +6,11 @@ dotenv.config();
 
 // Detect if running in production/cloud environment
 const isProduction = process.env.NODE_ENV === 'production';
-const isCloudDB = process.env.DB_HOST?.includes('aiven.com') || 
-                  process.env.DB_HOST?.includes('console.aiven.io') ||
-                  process.env.DB_HOST?.includes('aiven.io') ||
-                  process.env.DB_HOST?.includes('supabase.com') ||
-                  process.env.DB_HOST?.includes('render.com') ||
-                  process.env.DB_SSL === 'true';
-
-// Configuration for initial connection (without database name)
-const adminConfig = {
-  host: process.env.DB_HOST || "localhost",
-  port: parseInt(process.env.DB_PORT) || 5432,
-  user: process.env.DB_USER || "postgres",
-  password: process.env.DB_PASSWORD || "",
-  database: "postgres",
-  connectionTimeoutMillis: 10000,
-};
+const isSupabase = process.env.DB_HOST?.includes('supabase.co');
+const isAiven = process.env.DB_HOST?.includes('aiven.co');
+const isAiven = process.env.DB_HOST?.includes('console.aiven.co');
+const isRender = process.env.DB_HOST?.includes('render.com');
+const isCloudDB = isSupabase || isAiven || isRender || process.env.DB_SSL === 'true';
 
 // Configuration for actual app (with database name)
 const dbConfig = {
@@ -32,70 +21,28 @@ const dbConfig = {
   database: process.env.DB_NAME || "interview_coach",
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 15000,
 };
 
-// ONLY enable SSL for cloud databases (Render, Aiven, Supabase)
+// CRITICAL: Supabase and cloud databases REQUIRE SSL
 if (isCloudDB) {
-  adminConfig.ssl = { rejectUnauthorized: false };
   dbConfig.ssl = { rejectUnauthorized: false };
   console.log('🔒 SSL enabled for cloud database connection');
 } else {
   console.log('🔓 SSL disabled for local development');
 }
 
-// Function to ensure database exists
-const ensureDatabase = async () => {
-  // Skip database creation for cloud databases
-  if (isCloudDB) {
-    console.log('☁️ Cloud database detected - skipping database creation');
-    console.log(`✅ Using existing database: ${process.env.DB_NAME || 'interview_coach'}`);
-    return true;
-  }
-  
-  const client = new Client(adminConfig);
-  
-  try {
-    await client.connect();
-    console.log('✅ Connected to postgres database');
-    
-    const databaseName = process.env.DB_NAME || "interview_coach";
-    
-    // Check if database exists
-    const res = await client.query(
-      'SELECT 1 FROM pg_database WHERE datname = $1',
-      [databaseName]
-    );
-    
-    if (res.rows.length === 0) {
-      await client.query(`CREATE DATABASE ${databaseName}`);
-      console.log(`✅ Database '${databaseName}' created successfully`);
-    } else {
-      console.log(`✅ Database '${databaseName}' already exists`);
-    }
-    
-  } catch (error) {
-    console.error('❌ Error ensuring database:', error.message);
-    throw error;
-  } finally {
-    await client.end();
-  }
-};
-
-// Create pool
+// Create pool directly (no need for adminConfig with Supabase)
 let pool = null;
 
 const createPool = async () => {
   try {
-    // First, ensure database exists
-    await ensureDatabase();
-    
-    // Then create pool with the actual database
     pool = new Pool(dbConfig);
     
     // Test connection
     const testQuery = await pool.query('SELECT NOW()');
-    console.log(`✅ PostgreSQL connected to database '${dbConfig.database}'`);
+    const dbType = isSupabase ? 'Supabase' : (isCloudDB ? 'Cloud' : 'Local');
+    console.log(`✅ PostgreSQL connected to ${dbType} database '${dbConfig.database}'`);
     console.log(`📅 Database time: ${testQuery.rows[0].now}`);
     
     pool.on('error', (err) => {
@@ -105,6 +52,9 @@ const createPool = async () => {
     return pool;
   } catch (error) {
     console.error("❌ PostgreSQL connection failed:", error.message);
+    if (isSupabase) {
+      console.log("💡 Supabase tip: Make sure your password is correct and IP is allowed in Supabase network settings");
+    }
     throw error;
   }
 };
