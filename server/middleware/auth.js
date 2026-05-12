@@ -57,8 +57,9 @@ export const authenticate = async (req, res, next) => {
 
     console.log('Fetching user from database:', decoded.userId);
     
+    // PostgreSQL uses $1 instead of ?
     const user = await getOne(
-      'SELECT id, name, email, avatar_url, created_at FROM users WHERE id = ?',
+      'SELECT id, name, email, avatar_url, created_at FROM users WHERE id = $1',
       [decoded.userId]
     );
 

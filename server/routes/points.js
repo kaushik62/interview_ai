@@ -19,16 +19,16 @@ async function addPoints(userId, points, reason, connection = null) {
     
     await conn.query(
       `INSERT INTO user_points (user_id, total_points, current_streak, longest_streak, last_activity_date)
-       VALUES (?, ?, 0, 0, CURDATE())
-       ON DUPLICATE KEY UPDATE 
-       total_points = total_points + ?,
-       last_activity_date = CURDATE()`,
-      [userId, points, points]
+       VALUES ($1, $2, 0, 0, CURRENT_DATE)
+       ON CONFLICT (user_id) DO UPDATE SET 
+         total_points = user_points.total_points + $2,
+         last_activity_date = CURRENT_DATE`,
+      [userId, points]
     );
     
     await conn.query(
       `INSERT INTO points_history (id, user_id, points, reason, created_at)
-       VALUES (?, ?, ?, ?, NOW())`,
+       VALUES ($1, $2, $3, $4, NOW())`,
       [uuidv4(), userId, points, reason]
     );
     
@@ -60,7 +60,7 @@ async function updateStreak(userId, connection = null) {
     let userPoints = await getOne(
       `SELECT current_streak, longest_streak, last_activity_date, total_points
        FROM user_points 
-       WHERE user_id = ?`,
+       WHERE user_id = $1`,
       [userId]
     );
     
@@ -70,7 +70,7 @@ async function updateStreak(userId, connection = null) {
     if (!userPoints) {
       await conn.query(
         `INSERT INTO user_points (user_id, current_streak, longest_streak, last_activity_date, total_points)
-         VALUES (?, 1, 1, ?, 0)`,
+         VALUES ($1, 1, 1, $2, 0)`,
         [userId, today]
       );
     } else {
@@ -97,10 +97,10 @@ async function updateStreak(userId, connection = null) {
       
       await conn.query(
         `UPDATE user_points 
-         SET current_streak = ?,
-             longest_streak = GREATEST(COALESCE(longest_streak, 0), ?),
-             last_activity_date = ?
-         WHERE user_id = ?`,
+         SET current_streak = $1,
+             longest_streak = GREATEST(COALESCE(longest_streak, 0), $2),
+             last_activity_date = $3
+         WHERE user_id = $4`,
         [newStreak, newStreak, today, userId]
       );
     }
@@ -127,14 +127,14 @@ router.get('/my-stats', authenticate, async (req, res) => {
     let userPoints = await getOne(
       `SELECT total_points, current_streak, longest_streak, last_activity_date 
        FROM user_points 
-       WHERE user_id = ?`,
+       WHERE user_id = $1`,
       [userId]
     );
     
     if (!userPoints) {
       await query(
         `INSERT INTO user_points (user_id, total_points, current_streak, longest_streak, last_activity_date) 
-         VALUES (?, 0, 0, 0, CURDATE())`,
+         VALUES ($1, 0, 0, 0, CURRENT_DATE)`,
         [userId]
       );
       userPoints = { total_points: 0, current_streak: 0, longest_streak: 0 };
@@ -145,7 +145,7 @@ router.get('/my-stats', authenticate, async (req, res) => {
       const rankResult = await getOne(
         `SELECT COUNT(*) + 1 as rank
          FROM user_points 
-         WHERE total_points > ?`,
+         WHERE total_points > $1`,
         [userPoints.total_points]
       );
       rank = rankResult?.rank ? rankResult.rank.toString() : "Unranked";
@@ -208,7 +208,7 @@ router.get('/leaderboard', authenticate, async (req, res) => {
       const userPoints = await getOne(
         `SELECT COALESCE(total_points, 0) as total_points 
          FROM user_points 
-         WHERE user_id = ?`,
+         WHERE user_id = $1`,
         [userId]
       );
       
@@ -216,7 +216,7 @@ router.get('/leaderboard', authenticate, async (req, res) => {
         const rankResult = await getOne(
           `SELECT COUNT(*) + 1 as rank
            FROM user_points 
-           WHERE total_points > ?`,
+           WHERE total_points > $1`,
           [userPoints.total_points]
         );
         userRank = rankResult?.rank ? rankResult.rank.toString() : "Unranked";
@@ -249,14 +249,14 @@ router.get('/daily-challenge', authenticate, async (req, res) => {
     
     const existingCompletion = await getOne(
       `SELECT * FROM user_challenge_completions 
-       WHERE user_id = ? AND challenge_date = ?`,
+       WHERE user_id = $1 AND challenge_date = $2`,
       [userId, today]
     );
     
     const hasCompleted = !!existingCompletion;
     
     let dailyChallenge = await getOne(
-      `SELECT * FROM daily_challenges WHERE challenge_date = ?`,
+      `SELECT * FROM daily_challenges WHERE challenge_date = $1`,
       [today]
     );
     
@@ -275,7 +275,7 @@ router.get('/daily-challenge', authenticate, async (req, res) => {
         const challengeId = uuidv4();
         await query(
           `INSERT INTO daily_challenges (id, challenge_date, questions, created_at)
-           VALUES (?, ?, ?, NOW())`,
+           VALUES ($1, $2, $3, NOW())`,
           [challengeId, today, JSON.stringify(groqQuestions)]
         );
         
@@ -340,7 +340,7 @@ router.post('/daily-challenge/submit', authenticate, quizLimiter, async (req, re
     
     const existingCompletion = await getOne(
       `SELECT * FROM user_challenge_completions 
-       WHERE user_id = ? AND challenge_date = ?`,
+       WHERE user_id = $1 AND challenge_date = $2`,
       [userId, today]
     );
     
@@ -352,7 +352,7 @@ router.post('/daily-challenge/submit', authenticate, quizLimiter, async (req, re
     }
     
     const dailyChallenge = await getOne(
-      `SELECT * FROM daily_challenges WHERE challenge_date = ?`,
+      `SELECT * FROM daily_challenges WHERE challenge_date = $1`,
       [today]
     );
     
@@ -401,7 +401,7 @@ router.post('/daily-challenge/submit', authenticate, quizLimiter, async (req, re
     await connection.query(
       `INSERT INTO user_challenge_completions 
        (id, user_id, challenge_id, challenge_date, score, points_earned, answers, completed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
       [completionId, userId, dailyChallenge.id, today, score, pointsEarned, JSON.stringify(answers)]
     );
     
@@ -414,7 +414,7 @@ router.post('/daily-challenge/submit', authenticate, quizLimiter, async (req, re
     await commitTransaction(connection);
     
     const userPoints = await getOne(
-      `SELECT total_points FROM user_points WHERE user_id = ?`,
+      `SELECT total_points FROM user_points WHERE user_id = $1`,
       [userId]
     );
     
@@ -453,7 +453,7 @@ router.post('/add-quiz-points', authenticate, quizLimiter, async (req, res) => {
     const { newStreak, streakBonus } = await updateStreak(userId);
     
     const userPoints = await getOne(
-      `SELECT total_points FROM user_points WHERE user_id = ?`,
+      `SELECT total_points FROM user_points WHERE user_id = $1`,
       [userId]
     );
     
@@ -482,9 +482,9 @@ router.get('/history', authenticate, async (req, res) => {
     const history = await query(
       `SELECT points, reason, created_at
        FROM points_history
-       WHERE user_id = ?
+       WHERE user_id = $1
        ORDER BY created_at DESC
-       LIMIT ?`,
+       LIMIT $2`,
       [userId, limit]
     );
     

@@ -15,7 +15,7 @@ router.get('/sessions', authenticate, async (req, res) => {
     
     const sessions = await query(
       `SELECT * FROM mcq_sessions 
-       WHERE user_id = ? 
+       WHERE user_id = $1 
        ORDER BY created_at DESC`,
       [userId]
     );
@@ -34,7 +34,7 @@ router.get('/sessions/:sessionId', authenticate, async (req, res) => {
     const userId = req.user.id;
     
     const session = await getOne(
-      `SELECT * FROM mcq_sessions WHERE id = ? AND user_id = ?`,
+      `SELECT * FROM mcq_sessions WHERE id = $1 AND user_id = $2`,
       [sessionId, userId]
     );
     
@@ -43,7 +43,7 @@ router.get('/sessions/:sessionId', authenticate, async (req, res) => {
     }
     
     const questions = await query(
-      `SELECT * FROM mcq_questions WHERE session_id = ? ORDER BY question_number`,
+      `SELECT * FROM mcq_questions WHERE session_id = $1 ORDER BY question_number`,
       [sessionId]
     );
     
@@ -103,7 +103,7 @@ router.post('/sessions', authenticate, async (req, res) => {
     // Create session
     await connection.query(
       `INSERT INTO mcq_sessions (id, user_id, job_role, topic, total_questions, status, created_at)
-       VALUES (?, ?, ?, ?, ?, 'in_progress', NOW())`,
+       VALUES ($1, $2, $3, $4, $5, 'in_progress', NOW())`,
       [sessionId, userId, jobRole, topic || null, questions.length]
     );
     
@@ -115,7 +115,7 @@ router.post('/sessions', authenticate, async (req, res) => {
       await connection.query(
         `INSERT INTO mcq_questions 
          (id, session_id, question_number, question, options, correct_answer, explanation, difficulty, topic)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [questionId, sessionId, i + 1, q.question, JSON.stringify(q.options), q.correct, q.explanation, q.difficulty, topic]
       );
     }
@@ -155,7 +155,7 @@ router.post('/sessions/:sessionId/submit', authenticate, async (req, res) => {
     
     // Get session
     const session = await getOne(
-      `SELECT * FROM mcq_sessions WHERE id = ? AND user_id = ?`,
+      `SELECT * FROM mcq_sessions WHERE id = $1 AND user_id = $2`,
       [sessionId, userId]
     );
     
@@ -169,7 +169,7 @@ router.post('/sessions/:sessionId/submit', authenticate, async (req, res) => {
     
     // Get questions
     const questions = await query(
-      `SELECT * FROM mcq_questions WHERE session_id = ? ORDER BY question_number`,
+      `SELECT * FROM mcq_questions WHERE session_id = $1 ORDER BY question_number`,
       [sessionId]
     );
     
@@ -206,8 +206,8 @@ router.post('/sessions/:sessionId/submit', authenticate, async (req, res) => {
       // Update question with user's answer
       await connection.query(
         `UPDATE mcq_questions 
-         SET user_answer = ?, is_correct = ?, answered_at = NOW()
-         WHERE id = ?`,
+         SET user_answer = $1, is_correct = $2, answered_at = NOW()
+         WHERE id = $3`,
         [userAnswer, isCorrect, question.id]
       );
     }
@@ -220,25 +220,25 @@ router.post('/sessions/:sessionId/submit', authenticate, async (req, res) => {
     // Update session
     await connection.query(
       `UPDATE mcq_sessions 
-       SET correct_count = ?, score = ?, status = 'completed', completed_at = NOW()
-       WHERE id = ?`,
+       SET correct_count = $1, score = $2, status = 'completed', completed_at = NOW()
+       WHERE id = $3`,
       [correctCount, score, sessionId]
     );
     
-    // Award points
+    // Award points - PostgreSQL version with ON CONFLICT
     await connection.query(
       `INSERT INTO user_points (user_id, total_points, current_streak, longest_streak, last_activity_date)
-       VALUES (?, ?, 0, 0, CURDATE())
-       ON DUPLICATE KEY UPDATE 
-       total_points = total_points + ?,
-       last_activity_date = CURDATE()`,
-      [userId, pointsEarned, pointsEarned]
+       VALUES ($1, $2, 0, 0, CURRENT_DATE)
+       ON CONFLICT (user_id) DO UPDATE SET 
+         total_points = user_points.total_points + $2,
+         last_activity_date = CURRENT_DATE`,
+      [userId, pointsEarned]
     );
     
     // Add points history
     await connection.query(
       `INSERT INTO points_history (id, user_id, points, reason, created_at)
-       VALUES (?, ?, ?, ?, NOW())`,
+       VALUES ($1, $2, $3, $4, NOW())`,
       [uuidv4(), userId, pointsEarned, `Completed MCQ quiz - ${session.job_role} - Score: ${score}%`]
     );
     
@@ -246,7 +246,7 @@ router.post('/sessions/:sessionId/submit', authenticate, async (req, res) => {
     
     // Get updated total points
     const userPoints = await getOne(
-      `SELECT total_points FROM user_points WHERE user_id = ?`,
+      `SELECT total_points FROM user_points WHERE user_id = $1`,
       [userId]
     );
     
@@ -276,7 +276,7 @@ router.get('/sessions/:sessionId/result', authenticate, async (req, res) => {
     console.log('Fetching results for session:', sessionId);
     
     const session = await getOne(
-      `SELECT * FROM mcq_sessions WHERE id = ? AND user_id = ?`,
+      `SELECT * FROM mcq_sessions WHERE id = $1 AND user_id = $2`,
       [sessionId, userId]
     );
     
@@ -285,7 +285,7 @@ router.get('/sessions/:sessionId/result', authenticate, async (req, res) => {
     }
     
     const questions = await query(
-      `SELECT * FROM mcq_questions WHERE session_id = ? ORDER BY question_number`,
+      `SELECT * FROM mcq_questions WHERE session_id = $1 ORDER BY question_number`,
       [sessionId]
     );
     
@@ -335,7 +335,7 @@ router.get('/sessions/:sessionId/result', authenticate, async (req, res) => {
   }
 });
 
-// DELETE /api/mcq/sessions/:sessionId - Delete a session (FIXED)
+// DELETE /api/mcq/sessions/:sessionId - Delete a session
 router.delete('/sessions/:sessionId', authenticate, async (req, res) => {
   try {
     const { sessionId } = req.params;
@@ -345,7 +345,7 @@ router.delete('/sessions/:sessionId', authenticate, async (req, res) => {
     
     // Verify session belongs to user
     const session = await getOne(
-      `SELECT id FROM mcq_sessions WHERE id = ? AND user_id = ?`,
+      `SELECT id FROM mcq_sessions WHERE id = $1 AND user_id = $2`,
       [sessionId, userId]
     );
     
@@ -354,7 +354,7 @@ router.delete('/sessions/:sessionId', authenticate, async (req, res) => {
     }
     
     // Delete session (cascade will delete related questions due to foreign key)
-    await query(`DELETE FROM mcq_sessions WHERE id = ?`, [sessionId]);
+    await query(`DELETE FROM mcq_sessions WHERE id = $1`, [sessionId]);
     
     console.log('Session deleted successfully:', sessionId);
     res.json({ message: 'Session deleted successfully' });

@@ -15,11 +15,11 @@ const POINTS_CONFIG = {
 
 export async function ensureUserPointsExists(userId) {
   try {
-    const exists = await getOne('SELECT user_id FROM user_points WHERE user_id = ?', [userId]);
+    const exists = await getOne('SELECT user_id FROM user_points WHERE user_id = $1', [userId]);
     if (!exists) {
       await query(
         `INSERT INTO user_points (user_id, total_points, current_streak, longest_streak, last_activity_date)
-         VALUES (?, 0, 0, 0, NULL)`,
+         VALUES ($1, 0, 0, 0, NULL)`,
         [userId]
       );
       console.log(`Created user_points for user: ${userId}`);
@@ -35,13 +35,13 @@ export async function updateUserPointsAndStreak(userId, pointsToAdd = 0, reason 
     const today = new Date().toISOString().split('T')[0];
     
     // Get current user points
-    let userPoints = await getOne('SELECT * FROM user_points WHERE user_id = ?', [userId]);
+    let userPoints = await getOne('SELECT * FROM user_points WHERE user_id = $1', [userId]);
     
     if (!userPoints) {
       // Initialize user points
       await query(
         `INSERT INTO user_points (user_id, total_points, current_streak, longest_streak, last_activity_date)
-         VALUES (?, 0, 0, 0, NULL)`,
+         VALUES ($1, 0, 0, 0, NULL)`,
         [userId]
       );
       userPoints = { total_points: 0, current_streak: 0, longest_streak: 0, last_activity_date: null };
@@ -92,15 +92,15 @@ export async function updateUserPointsAndStreak(userId, pointsToAdd = 0, reason 
     const newTotalPoints = (userPoints.total_points || 0) + totalPointsToAdd;
     const newLongestStreak = Math.max(newStreak, userPoints.longest_streak || 0);
     
-    // Update user_points table
+    // Update user_points table - PostgreSQL uses $1, $2 etc.
     await query(
       `UPDATE user_points 
-       SET total_points = ?,
-           current_streak = ?,
-           longest_streak = ?,
-           last_activity_date = ?,
+       SET total_points = $1,
+           current_streak = $2,
+           longest_streak = $3,
+           last_activity_date = $4,
            updated_at = NOW()
-       WHERE user_id = ?`,
+       WHERE user_id = $5`,
       [newTotalPoints, newStreak, newLongestStreak, today, userId]
     );
     
@@ -108,7 +108,7 @@ export async function updateUserPointsAndStreak(userId, pointsToAdd = 0, reason 
     if (totalPointsToAdd > 0) {
       await query(
         `INSERT INTO points_history (id, user_id, points, reason, created_at)
-         VALUES (?, ?, ?, ?, NOW())`,
+         VALUES ($1, $2, $3, $4, NOW())`,
         [uuidv4(), userId, totalPointsToAdd, reason || (streakBonus ? streakMessage : 'Quiz activity')]
       );
     }
@@ -153,7 +153,7 @@ export async function addQuizCompletionPoints(userId, score, totalQuestions) {
 
 // Get user points and streak info
 export async function getUserPointsInfo(userId) {
-  const points = await getOne('SELECT * FROM user_points WHERE user_id = ?', [userId]);
+  const points = await getOne('SELECT * FROM user_points WHERE user_id = $1', [userId]);
   
   if (!points) {
     return {
@@ -189,24 +189,24 @@ export async function getUserPointsInfo(userId) {
 export async function getPointsHistory(userId, limit = 20) {
   return await query(
     `SELECT * FROM points_history 
-     WHERE user_id = ? 
+     WHERE user_id = $1 
      ORDER BY created_at DESC 
-     LIMIT ?`,
+     LIMIT $2`,
     [userId, limit]
   );
 }
 
-// Update leaderboard cache
+// Update leaderboard cache - PostgreSQL version
 export async function updateLeaderboardCache() {
   try {
     // Clear existing cache
     await query('TRUNCATE TABLE leaderboard_cache');
     
-    // Insert new leaderboard data with escaped rank column
+    // Insert new leaderboard data - PostgreSQL uses no backticks for rank
     await query(`
-      INSERT INTO leaderboard_cache (id, user_id, user_name, total_points, current_streak, longest_streak, \`rank\`)
+      INSERT INTO leaderboard_cache (id, user_id, user_name, total_points, current_streak, longest_streak, rank)
       SELECT 
-        UUID(),
+        gen_random_uuid()::varchar,
         up.user_id,
         u.name,
         up.total_points,
@@ -226,13 +226,13 @@ export async function updateLeaderboardCache() {
   }
 }
 
-// Get leaderboard
+// Get leaderboard - PostgreSQL version
 export async function getLeaderboard(limit = 50) {
   const leaderboard = await query(
-    `SELECT user_id, user_name, total_points, current_streak, longest_streak, \`rank\`
+    `SELECT user_id, user_name, total_points, current_streak, longest_streak, rank
      FROM leaderboard_cache
-     ORDER BY \`rank\` ASC
-     LIMIT ?`,
+     ORDER BY rank ASC
+     LIMIT $1`,
     [limit]
   );
   
@@ -245,10 +245,10 @@ export async function getLeaderboard(limit = 50) {
   return leaderboard;
 }
 
-// Get user rank
+// Get user rank - PostgreSQL version
 export async function getUserRank(userId) {
   const rank = await getOne(
-    `SELECT \`rank\` FROM leaderboard_cache WHERE user_id = ?`,
+    `SELECT rank FROM leaderboard_cache WHERE user_id = $1`,
     [userId]
   );
   

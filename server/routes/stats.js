@@ -1,4 +1,4 @@
-// server/routes/stats.js - FIXED VERSION with Points Integration
+// server/routes/stats.js - PostgreSQL Version with Points Integration
 import express from 'express';
 import { query, getOne } from '../db.js';
 import { authenticate } from '../middleware/auth.js';
@@ -8,17 +8,17 @@ const router = express.Router();
 // GET /api/stats/dashboard - Get user statistics dashboard
 router.get('/dashboard', authenticate, async (req, res) => {
   try {
-    // Ensure stats row exists for this user
+    // Ensure stats row exists for this user using PostgreSQL syntax
     await query(
       `INSERT INTO user_stats (user_id, total_sessions, completed_sessions, total_questions_answered, average_score, best_score, total_practice_time_seconds, streak_days)
-       VALUES (?, 0, 0, 0, 0, 0, 0, 0)
-       ON DUPLICATE KEY UPDATE user_id = user_id`,
+       VALUES ($1, 0, 0, 0, 0, 0, 0, 0)
+       ON CONFLICT (user_id) DO UPDATE SET user_id = EXCLUDED.user_id`,
       [req.user.id]
     );
 
     // Get user stats
     const stats = await getOne(
-      'SELECT * FROM user_stats WHERE user_id = ?',
+      'SELECT * FROM user_stats WHERE user_id = $1',
       [req.user.id]
     );
 
@@ -26,7 +26,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
     const pointsStats = await getOne(
       `SELECT total_points, current_streak, longest_streak, last_activity_date
        FROM user_points 
-       WHERE user_id = ?`,
+       WHERE user_id = $1`,
       [req.user.id]
     );
 
@@ -35,7 +35,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
       `SELECT id, title, job_role, interview_type, status, overall_score, 
               answered_questions, total_questions, created_at, completed_at
        FROM interview_sessions
-       WHERE user_id = ? AND status = 'completed'
+       WHERE user_id = $1 AND status = 'completed'
        ORDER BY created_at DESC
        LIMIT 5`,
       [req.user.id]
@@ -46,7 +46,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
       `SELECT id, job_role, topic, status, score, total_questions, correct_count,
               created_at, completed_at
        FROM mcq_sessions
-       WHERE user_id = ? AND status = 'completed'
+       WHERE user_id = $1 AND status = 'completed'
        ORDER BY created_at DESC
        LIMIT 5`,
       [req.user.id]
@@ -56,7 +56,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
     const scoreHistory = await query(
       `SELECT overall_score, completed_at, job_role
        FROM interview_sessions
-       WHERE user_id = ? AND status = 'completed' AND overall_score IS NOT NULL
+       WHERE user_id = $1 AND status = 'completed' AND overall_score IS NOT NULL
        ORDER BY completed_at ASC
        LIMIT 10`,
       [req.user.id]
@@ -66,7 +66,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
     const mcqScoreHistory = await query(
       `SELECT score, completed_at, job_role, topic
        FROM mcq_sessions
-       WHERE user_id = ? AND status = 'completed' AND score IS NOT NULL
+       WHERE user_id = $1 AND status = 'completed' AND score IS NOT NULL
        ORDER BY completed_at ASC
        LIMIT 10`,
       [req.user.id]
@@ -78,7 +78,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
               COUNT(*) as count,
               ROUND(AVG(overall_score), 1) as avg_score
        FROM interview_sessions
-       WHERE user_id = ? AND status = 'completed' AND overall_score IS NOT NULL
+       WHERE user_id = $1 AND status = 'completed' AND overall_score IS NOT NULL
        GROUP BY job_role
        ORDER BY count DESC
        LIMIT 5`,
@@ -91,7 +91,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
               COUNT(*) as count,
               ROUND(AVG(score), 1) as avg_score
        FROM mcq_sessions
-       WHERE user_id = ? AND status = 'completed' AND score IS NOT NULL
+       WHERE user_id = $1 AND status = 'completed' AND score IS NOT NULL
        GROUP BY job_role
        ORDER BY count DESC
        LIMIT 5`,
@@ -104,7 +104,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
               COUNT(*) as count,
               ROUND(AVG(overall_score), 1) as avg_score
        FROM interview_sessions
-       WHERE user_id = ? AND status = 'completed' AND overall_score IS NOT NULL
+       WHERE user_id = $1 AND status = 'completed' AND overall_score IS NOT NULL
        GROUP BY interview_type`,
       [req.user.id]
     );
@@ -117,11 +117,11 @@ router.get('/dashboard', authenticate, async (req, res) => {
       const lastActivity = await getOne(
         `SELECT MAX(created_at) as last_activity
          FROM (
-           SELECT created_at FROM interview_sessions WHERE user_id = ?
+           SELECT created_at FROM interview_sessions WHERE user_id = $1
            UNION
-           SELECT created_at FROM mcq_sessions WHERE user_id = ?
+           SELECT created_at FROM mcq_sessions WHERE user_id = $1
          ) as activities`,
-        [req.user.id, req.user.id]
+        [req.user.id]
       );
       
       if (lastActivity && lastActivity.last_activity) {
@@ -176,13 +176,13 @@ router.get('/dashboard', authenticate, async (req, res) => {
 router.get('/summary', authenticate, async (req, res) => {
   try {
     const stats = await getOne(
-      'SELECT * FROM user_stats WHERE user_id = ?',
+      'SELECT * FROM user_stats WHERE user_id = $1',
       [req.user.id]
     );
 
     // Get points stats
     const pointsStats = await getOne(
-      'SELECT total_points, current_streak, longest_streak FROM user_points WHERE user_id = ?',
+      'SELECT total_points, current_streak, longest_streak FROM user_points WHERE user_id = $1',
       [req.user.id]
     );
 
@@ -194,7 +194,7 @@ router.get('/summary', authenticate, async (req, res) => {
         COALESCE(SUM(total_questions), 0) as total_mcq_questions,
         COALESCE(SUM(correct_count), 0) as total_correct_answers
        FROM mcq_sessions
-       WHERE user_id = ? AND status = 'completed'`,
+       WHERE user_id = $1 AND status = 'completed'`,
       [req.user.id]
     );
 
@@ -205,7 +205,7 @@ router.get('/summary', authenticate, async (req, res) => {
         COALESCE(AVG(overall_score), 0) as avg_interview_score,
         COALESCE(SUM(answered_questions), 0) as total_interview_questions
        FROM interview_sessions
-       WHERE user_id = ? AND status = 'completed'`,
+       WHERE user_id = $1 AND status = 'completed'`,
       [req.user.id]
     );
 
@@ -328,7 +328,7 @@ router.get('/progress', authenticate, async (req, res) => {
               COUNT(*) as sessions_count,
               SUM(answered_questions) as total_questions
        FROM interview_sessions
-       WHERE user_id = ? AND status = 'completed' AND completed_at IS NOT NULL
+       WHERE user_id = $1 AND status = 'completed' AND completed_at IS NOT NULL
        GROUP BY DATE(completed_at)
        ORDER BY date DESC
        LIMIT 30`,
@@ -343,7 +343,7 @@ router.get('/progress', authenticate, async (req, res) => {
               SUM(total_questions) as total_questions,
               SUM(correct_count) as correct_answers
        FROM mcq_sessions
-       WHERE user_id = ? AND status = 'completed' AND completed_at IS NOT NULL
+       WHERE user_id = $1 AND status = 'completed' AND completed_at IS NOT NULL
        GROUP BY DATE(completed_at)
        ORDER BY date DESC
        LIMIT 30`,
@@ -356,7 +356,7 @@ router.get('/progress', authenticate, async (req, res) => {
               points,
               reason
        FROM points_history
-       WHERE user_id = ?
+       WHERE user_id = $1
        ORDER BY created_at DESC
        LIMIT 50`,
       [req.user.id]
@@ -396,7 +396,7 @@ router.get('/weak-areas', authenticate, async (req, res) => {
               COUNT(*) as attempts,
               MAX(created_at) as last_attempt
        FROM interview_sessions
-       WHERE user_id = ? AND status = 'completed' AND overall_score < 60 AND overall_score IS NOT NULL
+       WHERE user_id = $1 AND status = 'completed' AND overall_score < 60 AND overall_score IS NOT NULL
        GROUP BY job_role
        ORDER BY avg_score ASC
        LIMIT 5`,
@@ -411,7 +411,7 @@ router.get('/weak-areas', authenticate, async (req, res) => {
               COUNT(*) as attempts,
               MAX(created_at) as last_attempt
        FROM mcq_sessions
-       WHERE user_id = ? AND status = 'completed' AND score < 60 AND score IS NOT NULL
+       WHERE user_id = $1 AND status = 'completed' AND score < 60 AND score IS NOT NULL
        GROUP BY job_role, topic
        ORDER BY avg_score ASC
        LIMIT 5`,
@@ -424,7 +424,7 @@ router.get('/weak-areas', authenticate, async (req, res) => {
               ROUND(AVG(overall_score), 1) as avg_score,
               COUNT(*) as attempts
        FROM interview_sessions
-       WHERE user_id = ? AND status = 'completed' AND overall_score >= 80 AND overall_score IS NOT NULL
+       WHERE user_id = $1 AND status = 'completed' AND overall_score >= 80 AND overall_score IS NOT NULL
        GROUP BY job_role
        ORDER BY avg_score DESC
        LIMIT 3`,
@@ -454,16 +454,20 @@ router.get('/activity', authenticate, async (req, res) => {
       `SELECT 
         DATE(created_at) as date,
         COUNT(*) as total_activities,
-        SUM(CASE WHEN created_at IN (SELECT created_at FROM interview_sessions) THEN 1 ELSE 0 END) as interview_count,
-        SUM(CASE WHEN created_at IN (SELECT created_at FROM mcq_sessions) THEN 1 ELSE 0 END) as mcq_count
+        COUNT(*) FILTER (WHERE source = 'interview') as interview_count,
+        COUNT(*) FILTER (WHERE source = 'mcq') as mcq_count
        FROM (
-         SELECT created_at FROM interview_sessions WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+         SELECT created_at, 'interview' as source 
+         FROM interview_sessions 
+         WHERE user_id = $1 AND created_at >= NOW() - ($2 || ' days')::INTERVAL
          UNION ALL
-         SELECT created_at FROM mcq_sessions WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+         SELECT created_at, 'mcq' as source 
+         FROM mcq_sessions 
+         WHERE user_id = $1 AND created_at >= NOW() - ($2 || ' days')::INTERVAL
        ) as all_activities
        GROUP BY DATE(created_at)
        ORDER BY date DESC`,
-      [req.user.id, days, req.user.id, days]
+      [req.user.id, days]
     );
     
     // Get points activity
@@ -472,7 +476,7 @@ router.get('/activity', authenticate, async (req, res) => {
               SUM(points) as points_earned,
               COUNT(*) as activities
        FROM points_history
-       WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+       WHERE user_id = $1 AND created_at >= NOW() - ($2 || ' days')::INTERVAL
        GROUP BY DATE(created_at)
        ORDER BY date DESC`,
       [req.user.id, days]

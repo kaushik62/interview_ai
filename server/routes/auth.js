@@ -25,7 +25,7 @@ router.post('/register', authLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
-    const existing = await getOne('SELECT id FROM users WHERE email = ?', [email.toLowerCase()]);
+    const existing = await getOne('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
     if (existing) {
       return res.status(409).json({ error: 'Email already registered' });
     }
@@ -36,26 +36,26 @@ router.post('/register', authLimiter, async (req, res) => {
     const userId = uuidv4();
 
     await query(
-      'INSERT INTO users (id, name, email, password) VALUES (?, ?, ?, ?)',
+      'INSERT INTO users (id, name, email, password) VALUES ($1, $2, $3, $4)',
       [userId, name, email.toLowerCase(), passwordHash]
     );
 
     await query(
       `INSERT INTO user_stats (user_id, total_sessions, completed_sessions, total_questions_answered, average_score, best_score, total_practice_time_seconds, streak_days) 
-       VALUES (?, 0, 0, 0, 0, 0, 0, 0)`,
+       VALUES ($1, 0, 0, 0, 0, 0, 0, 0)`,
       [userId]
     );
 
     await query(
       `INSERT INTO user_points (user_id, total_points, current_streak, longest_streak, last_activity_date, total_daily_challenges_completed) 
-       VALUES (?, 0, 0, 0, CURDATE(), 0)`,
+       VALUES ($1, 0, 0, 0, CURRENT_DATE, 0)`,
       [userId]
     );
 
     const token = generateToken(userId);
     
     const user = await getOne(
-      'SELECT id, name, email, avatar_url, created_at FROM users WHERE id = ?',
+      'SELECT id, name, email, avatar_url, created_at FROM users WHERE id = $1',
       [userId]
     );
 
@@ -76,7 +76,7 @@ router.post('/login', authLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const user = await getOne('SELECT * FROM users WHERE email = ?', [email.toLowerCase()]);
+    const user = await getOne('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
     
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password' });
@@ -90,16 +90,16 @@ router.post('/login', authLimiter, async (req, res) => {
 
     const token = generateToken(user.id);
 
-    const pointsExist = await getOne('SELECT user_id FROM user_points WHERE user_id = ?', [user.id]);
+    const pointsExist = await getOne('SELECT user_id FROM user_points WHERE user_id = $1', [user.id]);
     if (!pointsExist) {
       await query(
         `INSERT INTO user_points (user_id, total_points, current_streak, longest_streak, last_activity_date, total_daily_challenges_completed) 
-         VALUES (?, 0, 0, 0, CURDATE(), 0)`,
+         VALUES ($1, 0, 0, 0, CURRENT_DATE, 0)`,
         [user.id]
       );
     }
 
-    await query('UPDATE users SET updated_at = NOW() WHERE id = ?', [user.id]);
+    await query('UPDATE users SET updated_at = NOW() WHERE id = $1', [user.id]);
 
     res.json({
       token,
@@ -122,19 +122,19 @@ router.post('/login', authLimiter, async (req, res) => {
 // GET /api/auth/me
 router.get('/me', authenticate, async (req, res) => {
   try {
-    const stats = await getOne('SELECT * FROM user_stats WHERE user_id = ?', [req.user.id]);
-    const points = await getOne('SELECT * FROM user_points WHERE user_id = ?', [req.user.id]);
+    const stats = await getOne('SELECT * FROM user_stats WHERE user_id = $1', [req.user.id]);
+    const points = await getOne('SELECT * FROM user_points WHERE user_id = $1', [req.user.id]);
     
     const recentActivity = await query(
       `SELECT 
-        (SELECT COUNT(*) FROM interview_sessions WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) as recent_interviews,
-        (SELECT COUNT(*) FROM mcq_sessions WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) as recent_mcq`,
-      [req.user.id, req.user.id]
+        (SELECT COUNT(*) FROM interview_sessions WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '30 days') as recent_interviews,
+        (SELECT COUNT(*) FROM mcq_sessions WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '30 days') as recent_mcq`,
+      [req.user.id]
     );
     
     const today = new Date().toISOString().split('T')[0];
     const todayChallenge = await getOne(
-      'SELECT * FROM user_challenge_completions WHERE user_id = ? AND challenge_date = ?',
+      'SELECT * FROM user_challenge_completions WHERE user_id = $1 AND challenge_date = $2',
       [req.user.id, today]
     );
     
@@ -175,24 +175,25 @@ router.put('/profile', authenticate, async (req, res) => {
 
     const updates = [];
     const values = [];
+    let paramCount = 1;
     
     if (name) {
-      updates.push('name = ?');
+      updates.push(`name = $${paramCount++}`);
       values.push(name);
     }
     
     if (avatar_url) {
-      updates.push('avatar_url = ?');
+      updates.push(`avatar_url = $${paramCount++}`);
       values.push(avatar_url);
     }
     
-    updates.push('updated_at = NOW()');
+    updates.push(`updated_at = NOW()`);
     values.push(req.user.id);
     
-    await query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+    await query(`UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount}`, values);
     
     const updated = await getOne(
-      'SELECT id, name, email, avatar_url, created_at FROM users WHERE id = ?',
+      'SELECT id, name, email, avatar_url, created_at FROM users WHERE id = $1',
       [req.user.id]
     );
     
@@ -217,7 +218,7 @@ router.put('/change-password', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'New password must be at least 6 characters' });
     }
     
-    const user = await getOne('SELECT password FROM users WHERE id = ?', [req.user.id]);
+    const user = await getOne('SELECT password FROM users WHERE id = $1', [req.user.id]);
     
     const valid = await bcrypt.compare(currentPassword, user.password);
     if (!valid) {
@@ -227,7 +228,7 @@ router.put('/change-password', authenticate, async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const newPasswordHash = await bcrypt.hash(newPassword, salt);
     
-    await query('UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?', [newPasswordHash, req.user.id]);
+    await query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [newPasswordHash, req.user.id]);
     
     res.json({ message: 'Password changed successfully!' });
     
@@ -251,14 +252,14 @@ router.delete('/account', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Password is required to delete account' });
     }
     
-    const user = await getOne('SELECT password FROM users WHERE id = ?', [req.user.id]);
+    const user = await getOne('SELECT password FROM users WHERE id = $1', [req.user.id]);
     const valid = await bcrypt.compare(password, user.password);
     
     if (!valid) {
       return res.status(401).json({ error: 'Incorrect password' });
     }
     
-    await query('DELETE FROM users WHERE id = ?', [req.user.id]);
+    await query('DELETE FROM users WHERE id = $1', [req.user.id]);
     
     res.json({ message: 'Account deleted successfully' });
     

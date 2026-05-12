@@ -38,13 +38,13 @@ router.get('/', authenticate, async (req, res) => {
         `SELECT 
            user_name,
            total_points,
-           \`rank\`
+           rank
          FROM leaderboard_cache
-         WHERE \`rank\` BETWEEN ? AND ?
-         ORDER BY \`rank\` ASC`,
+         WHERE rank BETWEEN $1 AND $2
+         ORDER BY rank ASC`,
         [userStats.rank - 2, userStats.rank + 2]
       );
-      nearbyUsers = nearbyResult[0] || [];
+      nearbyUsers = nearbyResult || [];
     }
     
     res.json({
@@ -109,15 +109,15 @@ router.get('/search', authenticate, async (req, res) => {
          total_points,
          current_streak,
          longest_streak,
-         \`rank\`
+         rank
        FROM leaderboard_cache
-       WHERE user_name LIKE ?
-       ORDER BY \`rank\` ASC
+       WHERE user_name LIKE $1
+       ORDER BY rank ASC
        LIMIT 20`,
       [`%${searchTerm}%`]
     );
     
-    const users = result[0] || [];
+    const users = result || [];
     
     res.json({
       success: true,
@@ -147,16 +147,16 @@ router.get('/me', authenticate, async (req, res) => {
     
     // Get users ahead and behind
     const aheadResult = await query(
-      `SELECT COUNT(*) as count FROM leaderboard_cache WHERE \`rank\` < ?`,
+      `SELECT COUNT(*) as count FROM leaderboard_cache WHERE rank < $1`,
       [userStats.rank]
     );
     const behindResult = await query(
-      `SELECT COUNT(*) as count FROM leaderboard_cache WHERE \`rank\` > ?`,
+      `SELECT COUNT(*) as count FROM leaderboard_cache WHERE rank > $1`,
       [userStats.rank]
     );
     
-    const usersAhead = aheadResult[0]?.[0]?.count || aheadResult[0]?.count || 0;
-    const usersBehind = behindResult[0]?.[0]?.count || behindResult[0]?.count || 0;
+    const usersAhead = aheadResult[0]?.count || 0;
+    const usersBehind = behindResult[0]?.count || 0;
     
     res.json({
       success: true,

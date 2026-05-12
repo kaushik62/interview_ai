@@ -1,4 +1,3 @@
-// Advanced rate limiter that tracks by user ID (not just IP)
 const userRequests = new Map();
 
 export const userRateLimiter = (maxRequests, windowMs) => {
