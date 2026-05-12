@@ -4,13 +4,9 @@ import dotenv from 'dotenv';
 const { Client, Pool } = pkg;
 dotenv.config();
 
-// Detect if running in production/cloud environment
-const isProduction = process.env.NODE_ENV === 'production';
+// Detect if using Supabase
 const isSupabase = process.env.DB_HOST?.includes('supabase.co');
-const isAiven = process.env.DB_HOST?.includes('aiven.co');
-const isAiven = process.env.DB_HOST?.includes('console.aiven.co');
-const isRender = process.env.DB_HOST?.includes('render.com');
-const isCloudDB = isSupabase || isAiven || isRender || process.env.DB_SSL === 'true';
+const isCloudDB = isSupabase || process.env.DB_SSL === 'true';
 
 // Configuration for actual app (with database name)
 const dbConfig = {
@@ -24,15 +20,15 @@ const dbConfig = {
   connectionTimeoutMillis: 15000,
 };
 
-// CRITICAL: Supabase and cloud databases REQUIRE SSL
+// CRITICAL: Supabase REQUIRES SSL
 if (isCloudDB) {
   dbConfig.ssl = { rejectUnauthorized: false };
-  console.log('🔒 SSL enabled for cloud database connection');
+  console.log('🔒 SSL enabled for Supabase connection');
 } else {
   console.log('🔓 SSL disabled for local development');
 }
 
-// Create pool directly (no need for adminConfig with Supabase)
+// Create pool
 let pool = null;
 
 const createPool = async () => {
@@ -41,8 +37,7 @@ const createPool = async () => {
     
     // Test connection
     const testQuery = await pool.query('SELECT NOW()');
-    const dbType = isSupabase ? 'Supabase' : (isCloudDB ? 'Cloud' : 'Local');
-    console.log(`✅ PostgreSQL connected to ${dbType} database '${dbConfig.database}'`);
+    console.log(`✅ PostgreSQL connected to ${isSupabase ? 'Supabase' : 'Local'} database '${dbConfig.database}'`);
     console.log(`📅 Database time: ${testQuery.rows[0].now}`);
     
     pool.on('error', (err) => {
@@ -53,7 +48,7 @@ const createPool = async () => {
   } catch (error) {
     console.error("❌ PostgreSQL connection failed:", error.message);
     if (isSupabase) {
-      console.log("💡 Supabase tip: Make sure your password is correct and IP is allowed in Supabase network settings");
+      console.log("💡 Supabase tip: Check your password and allow IP in Supabase network settings");
     }
     throw error;
   }
